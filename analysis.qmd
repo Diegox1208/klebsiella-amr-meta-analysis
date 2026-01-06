@@ -10,11 +10,7 @@ library(dplyr)
 library(janitor)
 library(meta)
 
-dat <- read_excel(
-  "C:/Users/Usuario/Downloads/bioestadistica.xlsx",
-  sheet = 1
-) |>
-  clean_names()
+data <- read.csv("data.csv", sep = ";")
 
 resist_col <- names(dat)[grepl("n_resist", names(dat), ignore.case = TRUE)][1]
 year_col   <- names(dat)[grepl("ano_usado", names(dat), ignore.case = TRUE)][1]
@@ -794,3 +790,4 @@ print(doc, target = "Tablas_1_y_3_MetaAnalisis.docx")
 message("  Word generado correctamente")
 
 ```
+
