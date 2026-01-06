@@ -1,0 +1,796 @@
+---
+title: "Resistencia antimicrobiana de Klebsiella pneumoniae en Perú: revisión sistemática, meta-análisis y tendencias temporales (2003–2021)"
+format: html
+editor: visual
+---
+
+```{r}
+library(readxl)
+library(dplyr)
+library(janitor)
+library(meta)
+
+dat <- read_excel(
+  "C:/Users/Usuario/Downloads/bioestadistica.xlsx",
+  sheet = 1
+) |>
+  clean_names()
+
+resist_col <- names(dat)[grepl("n_resist", names(dat), ignore.case = TRUE)][1]
+year_col   <- names(dat)[grepl("ano_usado", names(dat), ignore.case = TRUE)][1]
+autor_col  <- names(dat)[grepl("n_estudio", names(dat), ignore.case = TRUE)][1]
+
+message("Usando columna de casos resistentes: ", resist_col)
+message("Usando columna de año: ", year_col)
+message("Usando columna de autor: ", autor_col)
+
+dat_ma <- dat |>
+  mutate(
+    year        = as.character(.data[[year_col]]),
+    autor       = as.character(.data[[autor_col]]),
+
+    autor_corto = trimws(sub("[-–].*$", "", autor)),
+
+    casos       = as.numeric(.data[[resist_col]]),
+    total       = as.numeric(n_tested),
+
+    prev_3gc    = casos / total
+  ) |>
+
+  filter(!is.na(prev_3gc),
+         !is.na(casos),
+         !is.na(total),
+         total > 0) |>
+  mutate(
+    studlab = paste0(year, " - ", autor_corto)
+  )
+
+dat_ma |> select(studlab, casos, total, prev_3gc)
+
+m1 <- metaprop(
+  event      = casos,
+  n          = total,
+  studlab    = studlab,
+  data       = dat_ma,
+  sm         = "PLOGIT",
+  method     = "Inverse",  
+  method.tau = "REML",
+  incr       = 0.5,
+  allincr    = TRUE,
+  random     = TRUE,
+  fixed      = FALSE
+)
+
+print(m1)
+
+forest(
+  m1,
+  leftlabs = c("Año - Autor", "Casos", "Total"),
+  xlab     = "Prevalencia de multirresistencia",
+  smlab    = "",
+  digits   = 2
+)
+```
+
+```{r}
+res_year <- metareg(m1, ~ as.numeric(year))
+
+summary(res_year)
+library(ggplot2)
+library(scales)
+
+ggplot(bubble_data, aes(x = year, y = prev, size = weight)) +
+  
+  geom_point(alpha = 0.65) +
+  
+  geom_smooth(method = "lm", se = TRUE, color = "red", linewidth = 0.8) +
+  
+  scale_size_continuous(range = c(3, 12), guide = "none") +
+  
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  
+  theme_classic(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", hjust = 0.5),
+    axis.title   = element_text(face = "bold"),
+    axis.line    = element_line(linewidth = 0.5),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)
+  ) +
+  labs(
+    title = "Meta-regresión año vs.  prevalencia de resistencia a 3GC ",
+    x     = "Año del estudio",
+    y     = " prevalencia de resistencia a 3GC "
+  )
+
+```
+
+```{r}
+library(metafor)
+
+es <- escalc(
+  measure = "PLO",
+  xi      = casos,
+  ni      = total,
+  data    = dat_ma,
+  add     = 0.5,
+  to      = "all"
+)
+
+res_rma <- rma(
+  yi, vi,
+  mods  = ~ as.numeric(year),
+  data  = es,
+  method = "REML"
+)
+
+df_lm <- data.frame(
+  yi   = es$yi,
+  year = as.numeric(dat_ma$year),
+  w    = 1 / es$vi
+)
+
+fit_lm <- lm(yi ~ year, data = df_lm, weights = w)
+
+par(mfrow = c(2, 2))          
+
+plot(fit_lm, id.n = 3)
+
+par(mfrow = c(1, 1))          
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(janitor)
+library(ggplot2)
+library(scales)
+
+dat <- read_excel(
+  "C:/Users/Usuario/Downloads/bioestadistica.xlsx",
+  sheet = 1
+) |>
+  clean_names()
+
+abx_cols <- c("tmp_smx", "ctx", "cip", "carbapenemico")
+
+plot_dat <- dat |>
+  mutate(
+    ano_usado_meta = as.numeric(ano_usado_meta)
+  ) |>
+  select(ano_usado_meta, all_of(abx_cols)) |>
+  pivot_longer(
+    cols      = all_of(abx_cols),
+    names_to  = "antibiotico",
+    values_to = "resistencia"
+  ) |>
+  mutate(
+    resistencia = as.numeric(resistencia),
+    antibiotico = recode(
+      antibiotico,
+      tmp_smx        = "TMP-SMX",
+      ctx            = "CTX",
+      cip            = "CIP",
+      carbapenemico  = "Carbapenémicos"
+    )
+  ) |>
+  filter(!is.na(resistencia), !is.na(ano_usado_meta))
+
+ggplot(
+  plot_dat,
+  aes(x = ano_usado_meta,
+      y = resistencia * 100,
+      group     = antibiotico,
+      color     = antibiotico,
+      shape     = antibiotico,
+      linetype  = antibiotico)
+) +
+
+  geom_line(linewidth = 1.1, lineend = "round") +
+ 
+  geom_point(size = 3.5, stroke = 0.9) +
+  
+  scale_y_continuous(
+    limits = c(0, 100),
+    breaks = seq(0, 100, by = 20),
+    labels = function(x) paste0(x, "%"),
+    expand = expansion(mult = c(0, 0.03))
+  ) +
+  
+  scale_x_continuous(
+    breaks = sort(unique(plot_dat$ano_usado_meta)),
+    expand = expansion(mult = c(0.03, 0.03))
+  ) +
+  
+  scale_colour_grey(start = 0.15, end = 0.75) +
+  
+  scale_shape_manual(values = c(16, 17, 15, 3)) +   # ● ▲ ■ +
+  scale_linetype_manual(values = c("solid", "dashed", "dotdash", "twodash")) +
+  
+  theme_bw(base_size = 13) +
+  theme(
+    plot.title      = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.title.x    = element_text(face = "bold", margin = margin(t = 6)),
+    axis.title.y    = element_text(face = "bold", margin = margin(r = 6)),
+    axis.text       = element_text(color = "black"),
+    legend.title    = element_text(face = "bold"),
+    legend.position = "right",
+    panel.grid.major.y = element_line(linetype = "dotted", linewidth = 0.3),
+    panel.grid.major.x = element_blank()
+  ) +
+  labs(
+    title    = "Tendencia de resistencia en Klebsiella pneumoniae",
+    x        = "Año medio del estudio",
+    y        = "% de cepas resistentes",
+    color    = "Antibiótico",
+    shape    = "Antibiótico",
+    linetype = "Antibiótico"
+  )
+
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+library(janitor)
+library(meta)
+
+dat <- read_excel(
+  "C:/Users/Usuario/Downloads/bioestadistica.xlsx",
+  sheet = 1
+) |> 
+  clean_names()
+
+print(colnames(dat))
+
+meta_abx <- function(data, col_prop, label_abx) {
+  
+  df <- data |>
+    transmute(
+      year  = as.numeric(ano_usado_meta),
+      total = as.numeric(n_tested),
+      prop  = as.numeric(.data[[col_prop]])
+    ) |>
+    filter(!is.na(prop), !is.na(total), total > 0)
+  
+  df <- df |>
+    mutate(
+      casos = round(total * prop)
+    )
+  
+  metaprop(
+    event      = casos,
+    n          = total,
+    studlab    = paste0(year, " (n=", total, ")"),
+    data       = df,
+    sm         = "PLOGIT",
+    method     = "Inverse",
+    method.tau = "REML",
+    incr       = 0.5,
+    allincr    = TRUE,
+    random     = TRUE,
+    fixed      = FALSE,
+    comb.fixed = FALSE
+  )
+}
+
+meta_ctx  <- meta_abx(dat, "ctx",            "CTX")
+meta_tmp  <- meta_abx(dat, "tmp_smx",        "TMP-SMX")
+meta_cip  <- meta_abx(dat, "cip",            "CIP")
+meta_carb <- meta_abx(dat, "carbapenemico",  "Carbapenémicos")
+
+par(mfrow = c(2, 2))
+
+forest(
+  meta_ctx,
+  main = "Forest plot: CTX",
+  xlab = "Proporción de resistencia",
+  smlab = ""
+)
+
+forest(
+  meta_tmp,
+  main = "Forest plot: TMP-SMX",
+  xlab = "Proporción de resistencia",
+  smlab = ""
+)
+
+forest(
+  meta_cip,
+  main = "Forest plot: CIP",
+  xlab = "Proporción de resistencia",
+  smlab = ""
+)
+
+forest(
+  meta_carb,
+  main = "Forest plot: Carbapenémicos",
+  xlab = "Proporción de resistencia",
+  smlab = ""
+)
+
+par(mfrow = c(1, 1))  
+```
+
+```{r}
+library(dplyr)
+library(metafor)
+library(ggplot2)
+
+kpn_multi <- kpn_meta2 %>% 
+  filter(grupo %in% c("orina", "sangre")) %>% 
+  mutate(
+    grupo2 = factor(grupo, levels = c("orina", "sangre"))
+  )
+
+es <- escalc(
+  measure = "PLO",
+  xi      = n_3gc_r,
+  ni      = n_tested,
+  data    = kpn_multi
+)
+
+kpn_multi$logit_prev <- es$yi
+kpn_multi$var_logit  <- es$vi
+
+rma_multi <- rma(
+  yi    = logit_prev,
+  vi    = var_logit,
+  mods  = ~ year_meta + grupo2,   
+  method = "REML",
+  data   = kpn_multi
+)
+
+summary(rma_multi)   
+
+years_seq <- seq(min(kpn_multi$year_meta),
+                 max(kpn_multi$year_meta),
+                 by = 0.5)
+
+new_orina  <- cbind(year_meta = years_seq,
+                    grupo2sangre = 0)
+pred_orina <- predict(rma_multi, newmods = new_orina)
+
+new_sangre  <- cbind(year_meta = years_seq,
+                     grupo2sangre = 1)
+pred_sangre <- predict(rma_multi, newmods = new_sangre)
+
+df_pred <- bind_rows(
+  data.frame(
+    year_meta = years_seq,
+    prev      = plogis(pred_orina$pred),
+    lower     = plogis(pred_orina$ci.lb),
+    upper     = plogis(pred_orina$ci.ub),
+    grupo2    = "orina"
+  ),
+  data.frame(
+    year_meta = years_seq,
+    prev      = plogis(pred_sangre$pred),
+    lower     = plogis(pred_sangre$ci.lb),
+    upper     = plogis(pred_sangre$ci.ub),
+    grupo2    = "sangre"
+  )
+)
+
+ggplot() +
+  geom_ribbon(
+    data = df_pred,
+    aes(x = year_meta, ymin = lower, ymax = upper, fill = grupo2),
+    alpha = 0.18, colour = NA
+  ) +
+ geom_line(
+    data = df_pred,
+    aes(x = year_meta, y = prev, colour = grupo2),
+    linewidth = 1.1
+  ) +
+ geom_point(
+    data = kpn_multi,
+    aes(x = year_meta, y = prev_3gc, colour = grupo2),
+    size = 3.5, alpha = 0.95
+  ) +
+    scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  scale_x_continuous(
+    limits = c(2000, max(kpn_multi$year_meta, na.rm = TRUE)),
+    breaks = seq(2000, max(kpn_multi$year_meta, na.rm = TRUE), by = 5)
+  ) +
+
+  scale_colour_manual(
+    values = c("orina" = "#0072B2",  
+               "sangre" = "#D55E00"), 
+    name   = NULL,
+    labels = c("Orina", "Sangre")
+  ) +
+  scale_fill_manual(
+    values = c("orina" = "#0072B2",
+               "sangre" = "#D55E00"),
+    name   = NULL,
+    labels = c("Orina", "Sangre")
+  ) +
+  labs(
+    title = "Meta-regresión multivariada por año y tipo de muestra",
+    x     = "Año del estudio",
+    y     = "Prevalencia de resistencia a 3GC"
+  ) +
+  theme_bw(base_size = 13) +
+  theme(
+    plot.title      = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.title.x    = element_text(face = "bold", margin = margin(t = 6)),
+    axis.title.y    = element_text(face = "bold", margin = margin(r = 6)),
+    axis.text       = element_text(color = "black"),
+    legend.position = c(0.85, 0.2),
+    legend.background = element_rect(fill = "white", colour = "grey80"),
+    panel.grid.major.y = element_line(linetype = "dotted", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+
+```
+
+```{r}
+funnel(res_multi,
+       xlab = "Logit Transformado (Prevalencia)",
+       ylab = "Error estándar",
+       main = "Funnel plot: Resistencia a antibióticos en Klebsiella pneumoniae",
+       refline = 0)  
+
+abline(v = res_multi$b[1], lty = 2, col = "darkgray")
+
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+library(janitor)
+library(meta)
+library(stringr) 
+
+# 1. Cargar el Excel
+ruta_archivo <- "C:/Users/Usuario/Downloads/bioestadistica.xlsx" # Verifique su ruta
+datos_crudos <- read_excel(ruta_archivo, sheet = 1) %>%
+  clean_names() 
+
+datos_limpios <- datos_crudos %>%
+  mutate(
+    
+    n_tested = as.numeric(as.character(n_tested)),
+    n_resistentes_3gc = as.numeric(as.character(n_resistentes_3gc)),
+    prevalencia = as.numeric(as.character(prevalencia)),
+    
+
+    n_resistentes_3gc = ifelse(is.na(n_resistentes_3gc) & !is.na(prevalencia) & !is.na(n_tested),
+                               round(n_tested * prevalencia), 
+                               n_resistentes_3gc)             
+  ) %>%
+  
+ 
+  filter(!is.na(n_tested) & !is.na(n_resistentes_3gc)) %>%
+  filter(n_tested > 0) # Eliminamos estudios con n=0 si los hubiera
+
+print(paste("Filas originales:", nrow(datos_crudos)))
+print(paste("Filas limpias para análisis:", nrow(datos_limpios)))
+head(datos_limpios %>% select(n_estudio_autor, n_tested, n_resistentes_3gc))
+
+
+m1 <- metaprop(
+  event = n_resistentes_3gc,      
+  n = n_tested,                   
+  studlab = n_estudio_autor,      
+  data = datos_limpios,           
+  sm = "PLOGIT",                  
+  method = "Inverse",             
+  method.tau = "REML",            
+  fixed = FALSE,                  
+  random = TRUE
+)
+
+funnel(m1, 
+       xlab = "Logit de la Proporción (Prevalencia)",
+       ylab = "Error Estándar (Precisión)",
+       studlab = FALSE,          
+       pch = 21,                 
+       col = "black",            
+       bg = "#2E86C1",           
+       lwd = 1,
+       cex = 1.5,                
+       main = "Gráfico de Embudo: Evaluación de Sesgo de Publicación")
+
+abline(v = m1$TE.random, lty = 2, col = "red", lwd = 2)
+
+legend("topright", 
+       legend = c("Estudios", "Efecto Global"), 
+       pch = c(21, NA), 
+       lty = c(NA, 2), 
+       pt.bg = c("#2E86C1", NA),
+       col = c("black", "red"), 
+       bty = "n")
+
+```
+
+```{r}
+test_egger <- metabias(m1, method.bias = "linreg", k.min = 5)
+print("--- PRUEBA DE EGGER (p < 0.05 = Sesgo) ---")
+print(test_egger)
+
+library(ggplot2)
+library(ggrepel)
+
+ggplot(datos_limpios, aes(x = ano_usado_meta, y = prevalencia)) +
+  
+  geom_smooth(method = "loess", se = TRUE, color = "red", fill = "#ffcccc", alpha = 0.5) +
+  
+  geom_point(aes(size = n_tested), color = "darkblue", alpha = 0.7) +
+  
+  geom_text_repel(
+    aes(label = n_estudio_autor), 
+    size = 3, 
+    box.padding = 0.5,
+    max.overlaps = Inf 
+  ) +
+  
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(
+    title = "Línea de Tiempo: Evolución de la Resistencia a 3GC en Perú",
+    subtitle = "Etiquetas indican el Autor/Estudio según base de datos",
+    x = "Año del Estudio",
+    y = "Prevalencia de Resistencia",
+    size = "Tamaño de Muestra (n)"
+  ) +
+  theme_minimal()
+```
+
+# *NUEVOS GRAFICOS Y TABLA INCLUIDOS*
+
+## Tabla 1: Caracteristicas de los estudios incluidos
+
+## Tabla 2 - Mortalidad *NOT FOUND*
+
+## Figura 2, 3 y 4: Meta-análisis y Subgrupos
+
+Figura 2: Prevalencia general.
+
+Figura 3: Subgrupos por Población (Muestra).
+
+Figura 4: Subgrupos por Región
+
+## Tabla 3: Meta-regresión (Tabla de Covariantes)
+
+```{r}
+library(readxl)
+library(dplyr)
+library(janitor)
+library(meta)
+library(stringr)
+
+ruta <- "C:/Users/Usuario/Downloads/bioestadistica.xlsx"
+ 
+dat <- read_excel(ruta, sheet = 1) |> 
+  clean_names()
+
+message("Nombres de columnas detectados:")
+print(names(dat))
+
+df_final <- dat |>
+  mutate(
+  
+    total = as.numeric(n_tested),
+    year  = as.numeric(ano_usado_meta),
+    
+    casos = if("n_resistentes_3gc" %in% names(dat)) {
+       as.numeric(n_resistentes_3gc)
+    } else {
+       
+       dat[[grep("resist", names(dat), value = TRUE)[1]]] 
+    },
+    
+    prevalencia = as.numeric(prevalencia),
+    
+    casos = ifelse(is.na(casos) & !is.na(prevalencia) & !is.na(total), 
+                   round(total * prevalencia), 
+                   casos),
+    
+    region = case_when(
+      grepl("Lima|Callao|Mayo|Unanue|Rebagliati|Loayza|Cayetano|INEN|Breña", lugar, ignore.case = TRUE) ~ "Lima metropolitana",
+      grepl("Arequipa|Cusco|Chiclayo|Trujillo|Norte|Sur|Ayacucho|Junin", lugar, ignore.case = TRUE) ~ "Provincias",
+      TRUE ~ "Provincias" # Por defecto
+    ),
+    
+    tipo_muestra_cat = case_when(
+      grepl("Orina|Urocultivo|ITU", tipo_de_muestra, ignore.case = TRUE) ~ "Orina",
+      grepl("Sangre|Hemocultivo|Bacteriemia", tipo_de_muestra, ignore.case = TRUE) ~ "Sangre",
+      TRUE ~ "Otros/Secreciones"
+    )
+  ) |>
+  
+  filter(!is.na(casos), !is.na(total), total > 0)
+
+message("¡df_final creado exitosamente con ", nrow(df_final), " estudios!")
+
+
+m_gen <- metaprop(
+  event = casos,
+  n = total,
+  studlab = paste(year, n_estudio_autor, sep = " - "),
+  data = df_final,
+  sm = "PLOGIT",
+  method = "GLMM", 
+  common = FALSE,    
+  random = TRUE,
+  title = "Resistencia Global"
+)
+
+pdf("Figura2_Global.pdf", width = 10, height = 12)
+forest(m_gen, 
+       sortvar = year,
+       xlab = "Prevalencia de Resistencia (IC 95%)",
+       leftlabs = c("Estudio", "Eventos", "Total"),
+       header.line = TRUE,
+       col.diamond = "blue",
+       bg.diamond = "lightblue")
+dev.off()
+
+m_muestra <- update(m_gen, 
+                    byvar = tipo_muestra_cat, 
+                    print.byvar = FALSE) 
+
+pdf("Figura3_Subgrupo_Muestra.pdf", width = 10, height = 14)
+forest(m_muestra, 
+       sortvar = year,
+       xlab = "Prevalencia por Tipo de Muestra",
+       leftlabs = c("Estudio", "Eventos", "Total"),
+       test.subgroup = TRUE, 
+       col.diamond = "darkgreen",
+       col.by = "black")
+dev.off()
+
+# --- FIGURA 4: Subgrupos por REGIÓN ---
+m_region <- update(m_gen, 
+                   byvar = region,
+                   print.byvar = FALSE)
+
+pdf("Figura4_Subgrupo_Region.pdf", width = 10, height = 12)
+forest(m_region, 
+       sortvar = year,
+       xlab = "Prevalencia por Región Geográfica",
+       test.subgroup = TRUE,
+       col.diamond = "firebrick")
+dev.off()
+
+message("Figuras 2, 3 y 4 generadas en PDF.")
+
+```
+
+```{r}
+packages <- c("flextable","officer","meta","readxl","janitor","dplyr")
+for(p in packages){
+  if(!require(p, character.only = TRUE)) install.packages(p)
+  library(p, character.only = TRUE)
+}
+
+
+ruta <- "C:/Users/Usuario/Downloads/bioestadistica.xlsx"
+dat <- read_excel(ruta, sheet = 1) |> clean_names()
+
+col_detectada <- grep("resist", names(dat), value = TRUE)[1]
+if(is.na(col_detectada)) stop("No se encontró columna de resistencia.")
+dat$raw_casos <- dat[[col_detectada]]
+
+df_final <- dat |>
+  mutate(
+    total = suppressWarnings(as.numeric(n_tested)),
+    year  = suppressWarnings(as.numeric(ano_usado_meta)),
+
+    prevalencia_rep = suppressWarnings(
+      as.numeric(
+        gsub(",", ".", gsub("%", "", prevalencia))
+      )
+    ) / ifelse(grepl("%", prevalencia), 100, 1),
+
+    val_resist_raw = suppressWarnings(as.numeric(raw_casos)),
+
+    casos = case_when(
+      !is.na(val_resist_raw) & val_resist_raw >= 1 ~ val_resist_raw,
+      !is.na(val_resist_raw) & val_resist_raw < 1 & !is.na(total) ~ round(val_resist_raw * total),
+      is.na(val_resist_raw) & !is.na(prevalencia_rep) & !is.na(total) ~ round(prevalencia_rep * total),
+      TRUE ~ NA_real_
+    ),
+
+    region = ifelse(
+      grepl("Lima|Callao|Mayo|Unanue|Rebagliati|Loayza|Cayetano|INEN|Breña|Vitarte",
+            lugar, ignore.case = TRUE),
+      "Lima Metropolitana", "Provincias"
+    ),
+
+    tipo_muestra_cat = case_when(
+      grepl("Orina|Urocultivo|ITU", tipo_de_muestra, ignore.case = TRUE) ~ "Orina",
+      grepl("Sangre|Hemocultivo", tipo_de_muestra, ignore.case = TRUE) ~ "Sangre",
+      TRUE ~ "Otros"
+    )
+  ) |>
+  filter(!is.na(casos), !is.na(total), total > 0)
+
+message("Datos finales: ", nrow(df_final), " estudios")
+
+
+tabla_1 <- df_final |>
+  select(
+    Autor = n_estudio_autor,
+    Año = year,
+    Región = region,
+    Muestra = tipo_muestra_cat,
+    `N Total` = total,
+    `N Resistentes` = casos
+  ) |>
+  arrange(Año)
+
+ft_1 <- flextable(tabla_1) |>
+  theme_vanilla() |>
+  autofit() |>
+  set_caption("Tabla 1. Características de los estudios incluidos.")
+
+
+ft_3 <- NULL
+
+if(nrow(df_final) >= 3){
+
+  m_gen <- metaprop(
+    event = casos, n = total,
+    studlab = paste(year, n_estudio_autor, sep=" - "),
+    data = df_final,
+    sm = "PLOGIT",
+    method = "GLMM",
+    random = TRUE
+  )
+
+  metareg_model <- metareg(m_gen, ~ year + factor(region))
+  s <- summary(metareg_model)
+
+  tabla_3 <- data.frame(
+  Variable = rownames(s$beta),
+  Coeficiente = round(s$beta, 4),
+  Valor_P = round(s$pval, 4),
+  IC_Inf = round(s$ci.lb, 4),
+  IC_Sup = round(s$ci.ub, 4)
+  )
+
+
+  tabla_3$Variable <- gsub("intrcpt", "Intercepto", tabla_3$Variable)
+  tabla_3$Variable <- gsub("year", "Año de publicación", tabla_3$Variable)
+  tabla_3$Variable <- gsub("factor\\(region\\)Provincias",
+                           "Provincia (Ref: Lima)", tabla_3$Variable)
+
+  ft_3 <- flextable(tabla_3) |>
+  theme_vanilla() |>
+  bold(i = ~ Valor_P < 0.05, j = "Valor_P") |>
+  color(i = ~ Valor_P < 0.05, j = "Valor_P", color = "red") |>
+  set_header_labels(
+    Valor_P = "Valor P",
+    IC_Inf = "IC 95% Inf",
+    IC_Sup = "IC 95% Sup"
+  ) |>
+  autofit() |>
+  set_caption("Tabla 3. Resultados de la meta-regresión.")
+}
+
+
+doc <- read_docx() |>
+  body_add_par("Reporte de Resultados", style = "heading 1") |>
+  body_add_par("") |>
+  body_add_flextable(ft_1) |>
+  body_add_break()
+
+if(!is.null(ft_3)){
+  doc <- doc |>
+    body_add_par("Análisis multivariado", style = "heading 1") |>
+    body_add_par("") |>
+    body_add_flextable(ft_3)
+}
+
+print(doc, target = "Tablas_1_y_3_MetaAnalisis.docx")
+
+message("  Word generado correctamente")
+
+```
