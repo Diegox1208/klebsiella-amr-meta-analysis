@@ -13,4 +13,4 @@ Drivers: A strong and statistically significant correlation was found between ES
 * `analysis.qmd`: R/Quarto script for meta-analysis and visualization (Forest and Funnel plots).
 
 ## Author
-Diego G. Salas | Bioengineering & Computational Researcher @ UTEC.
+Diego G. Salas | Bioengineering & Computational Researcher.
