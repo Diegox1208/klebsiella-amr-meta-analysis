@@ -1,0 +1,678 @@
+---
+title: "Third-generation cephalosporin resistance among Klebsiella pneumoniae in Peru: meta-analysis"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+    fig-width: 8
+    fig-height: 6
+editor: visual
+---
+
+## 1. Preparación de datos
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+.libPaths(file.path(Sys.getenv("LOCALAPPDATA"), "R", "win-library", "4.6"))
+
+library(readxl); library(dplyr); library(janitor); library(meta)
+library(ggplot2); library(scales); library(metafor)
+library(tidyr); library(stringr); library(forcats); library(writexl)
+library(ragg)   # rasterizado en gris puro para los TIFF (ver helpers más abajo)
+
+proj <- normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE)
+ruta_raw <- file.path(proj, "data/main_dataset_v3.csv")
+out_dir  <- file.path(proj, "results")
+tif_dir  <- file.path(proj, "figures")
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(tif_dir, showWarnings = FALSE, recursive = TRUE)
+
+STD_W <- 9; STD_H <- 5
+gg_tiff <- function(p, name, w = STD_W, h = STD_H)
+  ggsave(file.path(tif_dir, name), p, width = w, height = h, units = "in",
+         dpi = 300, device = ragg::agg_tiff, compression = "lzw",
+         background = "white")
+base_tiff <- function(name, draw, w = STD_W, h = STD_H) {
+  ragg::agg_tiff(file.path(tif_dir, name), width = w, height = h, units = "in",
+                 res = 300, compression = "lzw", background = "white")
+  draw(); dev.off()
+  draw()   # inline (HTML)
+}
+
+G_OSCURO <- "grey20"; G_MEDIO <- "grey45"; G_CLARO <- "grey70"; G_TENUE <- "grey88"
+
+theme_paper <- function(base = 12)
+  theme_classic(base_size = base) +
+  theme(axis.line   = element_line(colour = "black", linewidth = 0.4),
+        axis.ticks  = element_line(colour = "black", linewidth = 0.4),
+        axis.text   = element_text(colour = "black"),
+        axis.title  = element_text(colour = "black"),
+        strip.background = element_rect(fill = G_TENUE, colour = "black", linewidth = 0.4),
+        strip.text  = element_text(colour = "black", face = "bold"),
+        legend.key  = element_blank(),
+        legend.text = element_text(colour = "black"),
+        plot.title  = element_text(colour = "black", face = "bold", size = rel(1)))
+
+forest_gris <- function(x, ...)
+  forest(x, col.square = G_CLARO, col.square.lines = "black",
+         col.diamond = G_MEDIO, col.diamond.lines = "black",
+         col.study = "black", col.inside = "black", ...)
+
+ci_prop <- function(x, n, conf = 0.95) {
+  res <- mapply(function(xi, ni) {
+    if (is.na(xi) || is.na(ni) || ni <= 0) return(c(NA_real_, NA_real_))
+    as.numeric(binom.test(round(xi), round(ni), conf.level = conf)$conf.int)
+  }, as.numeric(x), as.numeric(n))
+  data.frame(ci_low = res[1, ], ci_high = res[2, ])
+}
+
+num <- function(x) suppressWarnings(as.numeric(dplyr::na_if(as.character(x), "-")))
+abx <- c("ampicillin","amc","caz","ctx","atm","nalidixic_acid","nit","norfloxacin",
+         "cip","tmp_smx","amk","gen","cro","carbapenem_resistance","esbl")
+
+dat0 <- read.csv(ruta_raw, fileEncoding = "UTF-8-BOM", stringsAsFactors = FALSE,
+                 na.strings = c("", "NA", "-")) |>
+  clean_names() |>
+  mutate(across(all_of(abx), num),
+         n_tested = as.numeric(n_tested), n_resistant = as.numeric(n_resistant),
+         meta_year = as.numeric(meta_year), measurement_tier = as.integer(measurement_tier))
+
+is_r <- grepl("Rondon", dat0$study_label_author, ignore.case = TRUE)
+rr   <- dat0[is_r, ]
+wsum <- function(col) { v <- rr[[col]]; w <- rr$n_tested; ok <- !is.na(v)
+                        if (!any(ok)) NA_real_ else sum(v[ok]*w[ok]) / sum(w[ok]) }
+comb <- rr[1, ]
+comb$n_tested    <- sum(rr$n_tested)
+comb$n_resistant <- sum(rr$n_resistant)
+comb$prevalence  <- comb$n_resistant / comb$n_tested
+comb$sample_type <- "Multiple (Blood + Urine)"
+for (cc in abx) comb[[cc]] <- wsum(cc)
+
+dat0$meta_year[grepl("P.rez-Lazo", dat0$study_label_author)] <- 2017
+
+dat <- bind_rows(dat0[!is_r, ], comb) |> arrange(meta_year)
+
+etiqueta_autor <- function(x) {
+  x <- trimws(sub("\\s*[\u2013\u2014]\\s*.*$", "", x))  # corta en raya, nunca en guion
+  x <- trimws(sub("\\s*et al\\.?$", "", x))
+  ifelse(x == "Castilla Torres", x, paste(x, "et al."))
+}
+dat$autor  <- etiqueta_autor(dat$study_label_author)
+dat0$autor <- etiqueta_autor(dat0$study_label_author)
+
+write_xlsx(dat, file.path(out_dir, "klebsiella_pneumoniae_amr_peru_v3.xlsx"))
+message("Estudios: ", nrow(dat), " | Aislamientos: ", sum(dat$n_tested),
+        " | TIFF -> ", tif_dir)
+```
+
+## 2. Meta-análisis principal (resistencia a 3GC)
+
+```{r}
+#| label: meta-principal
+#| fig-height: 6
+dat_ma <- dat |>
+  filter(primary_report == "SI") |>   # un estimado por estudio (García 2016 = informe secundario)
+  mutate(casos = n_resistant, total = n_tested, year = meta_year,
+         autor_corto = autor,
+         prev_3gc = casos / total) |>
+  filter(!is.na(prev_3gc), !is.na(casos), !is.na(total), total > 0) |>
+  arrange(year) |>
+  mutate(studlab = paste0(year, " - ", autor_corto))
+
+m1 <- metaprop(event = casos, n = total, studlab = studlab, data = dat_ma,
+  sm = "PLOGIT", method = "Inverse", method.tau = "REML",
+  incr = 0.5, method.incr = "only0", random = TRUE, common = FALSE)
+
+base_tiff("Fig_forest_3GC_main.tiff", function() forest_gris(m1,
+  leftlabs = c("Year - Author", "Cases", "Total"),
+  xlab = "Prevalence of 3GC resistance", smlab = "", digits = 2, colgap.forest.left = "14mm"))
+```
+
+## 3. Meta-regresión bivariada (año vs. prevalencia)
+
+```{r}
+#| label: metareg-anio
+res_year <- metareg(m1, ~ year)
+summary(res_year)
+
+bubble_data <- dat_ma |>
+  mutate(prev = prev_3gc, weight = m1$w.random / max(m1$w.random)) |>
+  bind_cols(ci_prop(dat_ma$casos, dat_ma$total))
+
+p_bubble <- ggplot(bubble_data, aes(x = year, y = prev)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.35,
+                colour = G_MEDIO, linewidth = 0.45) +
+  geom_smooth(method = "lm", se = TRUE, colour = "black", fill = G_CLARO,
+              alpha = 0.35, linewidth = 0.8) +
+  geom_point(aes(size = weight), shape = 21, fill = G_CLARO, colour = "black",
+             stroke = 0.5, alpha = 0.95) +
+  scale_size_continuous(range = c(3, 12), guide = "none") +
+  scale_y_continuous(labels = percent_format(accuracy = 1), limits = c(0, 1)) +
+  theme_paper(12) +
+  labs(x = "Study year", y = "Prevalence of 3GC resistance")
+gg_tiff(p_bubble, "FigS1_metareg_year.tiff"); p_bubble
+```
+
+### Diagnóstico del modelo
+
+```{r}
+#| label: diagnostico
+es <- escalc(measure = "PLO", xi = casos, ni = total, data = dat_ma, add = 0.5, to = "all")
+res_rma <- rma(yi, vi, mods = ~ as.numeric(year), data = es, method = "REML")
+df_lm <- data.frame(yi = es$yi, year = as.numeric(dat_ma$year), w = 1 / es$vi)
+fit_lm <- lm(yi ~ year, data = df_lm, weights = w)
+base_tiff("Fig_model_diagnostics.tiff",
+  function(){ op <- par(mfrow = c(2,2))
+              plot(fit_lm, id.n = 3, col = G_OSCURO, col.smooth = G_MEDIO,
+                   pch = 21, bg = G_CLARO, lwd = 1.2)
+              par(op) }, w = 8, h = 7)
+```
+
+### Estimaciones por antibiótico crítico a lo largo de los años de estudio (Figura 3)
+
+```{r}
+#| label: tendencia-abx
+#| warning: false
+abx_cols <- c("tmp_smx", "ctx", "cip", "carbapenem_resistance")
+plot_dat <- dat_ma |>
+  select(meta_year, n_tested, studlab, all_of(abx_cols)) |>
+  pivot_longer(all_of(abx_cols), names_to = "antibiotic", values_to = "resistance") |>
+  mutate(antibiotic = factor(recode(antibiotic,
+      tmp_smx = "TMP-SMX", ctx = "CTX", cip = "CIP",
+      carbapenem_resistance = "Carbapenems"),
+      levels = c("CTX", "TMP-SMX", "CIP", "Carbapenems"))) |>
+  filter(!is.na(resistance), !is.na(meta_year), !is.na(n_tested), n_tested > 0) |>
+  mutate(rotulo_txt = sub(" et al\\.$", "", sub("^[0-9]+ - ", "", studlab)))
+
+plot_dat <- plot_dat |>
+  bind_cols(ci_prop(round(plot_dat$resistance * plot_dat$n_tested), plot_dat$n_tested))
+
+rotulo <- if (requireNamespace("ggrepel", quietly = TRUE)) {
+  ggrepel::geom_text_repel(aes(label = rotulo_txt), size = 2.6, colour = G_OSCURO,
+                           min.segment.length = 0.2, segment.colour = G_CLARO,
+                           max.overlaps = Inf, seed = 1)
+} else {
+  geom_text(aes(label = rotulo_txt), size = 2.6, colour = G_OSCURO,
+            hjust = -0.12, vjust = -0.5)
+}
+p_trend <- ggplot(plot_dat, aes(x = meta_year, y = resistance * 100)) +
+  geom_errorbar(aes(ymin = ci_low * 100, ymax = ci_high * 100), width = 0.5,
+                colour = G_MEDIO, linewidth = 0.45) +
+  geom_point(aes(shape = antibiotic), size = 2.6, fill = "white",
+             colour = "black", stroke = 0.6) +
+  rotulo +
+  facet_wrap(~ antibiotic, nrow = 2) +
+  scale_shape_manual(values = c(21, 22, 24, 23), guide = "none") +
+  scale_x_continuous(expand = expansion(mult = c(0.08, 0.25))) +   # sitio para rótulos
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20),
+                     labels = function(x) paste0(x, "%")) +
+  theme_paper(12) +
+  theme(panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.4),
+        plot.caption = element_text(size = 8, hjust = 0)) +
+  labs(title = "Antimicrobial resistance estimates across study years in K. pneumoniae",
+       x = "Study mid-year", y = "Non-susceptible isolates, %")
+gg_tiff(p_trend, "Fig_trend_antibiotics.tiff"); p_trend
+```
+
+### Meta-análisis por antibiótico crítico
+
+```{r}
+#| label: meta-por-abx
+#| warning: false
+meta_abx <- function(data, col_prop) {
+  df <- data |>
+    transmute(year = meta_year, autor = autor, total = n_tested, prop = .data[[col_prop]]) |>
+    filter(!is.na(prop), !is.na(total), total > 0) |>
+    mutate(casos = round(total * prop))
+  metaprop(event = casos, n = total, studlab = paste0(year, " - ", autor),
+           data = df, sm = "PLOGIT", method = "Inverse", method.tau = "REML",
+           incr = 0.5, method.incr = "only0", random = TRUE, common = FALSE)
+}
+meta_ctx  <- meta_abx(dat_ma, "ctx")
+meta_tmp  <- meta_abx(dat_ma, "tmp_smx")
+meta_cip  <- meta_abx(dat_ma, "cip")
+meta_carb <- meta_abx(dat_ma, "carbapenem_resistance")
+
+forest_abx <- function(m) forest_gris(m, leftlabs = c("Year - Author", "Cases", "Total"), smlab = "", digits = 2,
+                                     xlab = "Proportion resistant", colgap.forest.left = "14mm")
+base_tiff("FigS5_forest_CTX.tiff",         function() forest_abx(meta_ctx))
+base_tiff("Fig_forest_TMP_SMX.tiff",       function() forest_abx(meta_tmp))
+base_tiff("Fig_forest_CIP.tiff",           function() forest_abx(meta_cip))
+base_tiff("FigS4_forest_carbapenems.tiff", function() forest_abx(meta_carb))
+```
+
+### BLEE (+) vs. resistencia a 3GC
+
+```{r}
+#| label: blee-vs-3gc
+#| warning: false
+dat_blee <- dat_ma |> filter(!is.na(n_tested), !is.na(n_resistant), !is.na(esbl),
+                             measurement_tier < 3)
+es_blee <- escalc(measure = "PLO", xi = n_resistant, ni = n_tested, data = dat_blee)
+meta_blee <- rma(yi, vi, mods = ~ esbl, data = es_blee, method = "REML")
+summary(meta_blee)
+
+p_val <- coef(summary(meta_blee))["esbl", "pval"]
+newdat <- data.frame(esbl = seq(min(dat_blee$esbl), max(dat_blee$esbl), length.out = 100))
+pred <- predict(meta_blee, newmods = newdat$esbl)
+newdat$pred  <- transf.ilogit(pred$pred)
+newdat$ci_lb <- transf.ilogit(pred$ci.lb)
+newdat$ci_ub <- transf.ilogit(pred$ci.ub)
+
+dat_blee <- dat_blee |> bind_cols(ci_prop(dat_blee$n_resistant, dat_blee$n_tested))
+
+p_blee <- ggplot() +
+  geom_ribbon(data = newdat, aes(x = esbl, ymin = ci_lb, ymax = ci_ub),
+              fill = G_CLARO, alpha = 0.45) +
+  geom_errorbar(data = dat_blee, aes(x = esbl, ymin = ci_low, ymax = ci_high),
+                width = 0.02, colour = G_MEDIO, linewidth = 0.45) +
+  geom_line(data = newdat, aes(x = esbl, y = pred), colour = "black", linewidth = 0.9) +
+  geom_point(data = dat_blee, aes(x = esbl, y = n_resistant / n_tested, size = n_tested),
+             shape = 21, colour = "black", fill = G_CLARO, stroke = 0.5, alpha = 0.95) +
+  scale_size_continuous(range = c(3, 10), guide = "none") +
+  scale_y_continuous(labels = percent_format(accuracy = 1), limits = c(0, 1)) +
+  labs(x = "Proportion of ESBL-positive isolates",
+       y = "Prevalence of 3GC resistance") +
+  theme_paper(13)
+gg_tiff(p_blee, "FigS3_metareg_ESBL.tiff"); p_blee
+```
+
+## 4. Meta-regresión multivariada (año + tipo de muestra)
+
+```{r}
+#| label: multivariada
+#| warning: false
+kpn_multi <- dat0 |>
+  filter(primary_report == "SI") |>
+  mutate(
+    grupo = case_when(
+      grepl("^Blood", sample_type) ~ "sangre",   # incluye "Blood (neonatal)": García 2016 (sec.) y Quispe
+      grepl("^Urine", sample_type) ~ "orina",
+      TRUE ~ "otros"),
+    year_meta = meta_year, n_3gc_r = n_resistant, prev_3gc = n_3gc_r / n_tested) |>
+  filter(grupo %in% c("orina", "sangre"), !is.na(prev_3gc)) |>
+  mutate(grupo2 = factor(grupo, levels = c("orina", "sangre")))
+
+es_m <- escalc(measure = "PLO", xi = n_3gc_r, ni = n_tested, data = kpn_multi)
+kpn_multi$logit_prev <- es_m$yi; kpn_multi$var_logit <- es_m$vi
+rma_multi <- rma(logit_prev, var_logit, mods = ~ year_meta + grupo2, method = "REML", data = kpn_multi)
+summary(rma_multi)
+
+years_seq <- seq(min(kpn_multi$year_meta), max(kpn_multi$year_meta), by = 0.5)
+pred_o <- predict(rma_multi, newmods = cbind(year_meta = years_seq, grupo2sangre = 0))
+pred_s <- predict(rma_multi, newmods = cbind(year_meta = years_seq, grupo2sangre = 1))
+df_pred <- bind_rows(
+  data.frame(year_meta = years_seq, prev = plogis(pred_o$pred),
+             lower = plogis(pred_o$ci.lb), upper = plogis(pred_o$ci.ub), grupo2 = "orina"),
+  data.frame(year_meta = years_seq, prev = plogis(pred_s$pred),
+             lower = plogis(pred_s$ci.lb), upper = plogis(pred_s$ci.ub), grupo2 = "sangre"))
+
+kpn_multi <- kpn_multi |> bind_cols(ci_prop(kpn_multi$n_3gc_r, kpn_multi$n_tested))
+
+p_multi <- ggplot() +
+  geom_ribbon(data = df_pred, aes(year_meta, ymin = lower, ymax = upper, fill = grupo2),
+              alpha = 0.30) +
+  geom_line(data = df_pred, aes(year_meta, prev, linetype = grupo2),
+            colour = "black", linewidth = 0.9) +
+  geom_errorbar(data = kpn_multi, aes(x = year_meta, ymin = ci_low, ymax = ci_high),
+                width = 0.35, colour = G_MEDIO, linewidth = 0.45) +
+  geom_point(data = kpn_multi, aes(year_meta, prev_3gc, shape = grupo2),
+             size = 3.2, colour = "black", fill = "white", stroke = 0.7) +
+  scale_y_continuous(labels = percent_format(accuracy = 1), limits = c(0, 1)) +
+  scale_fill_manual(values = c(orina = G_CLARO, sangre = G_OSCURO),
+                    name = NULL, labels = c("Urine", "Blood")) +
+  scale_linetype_manual(values = c(orina = "42", sangre = "solid"),
+                        name = NULL, labels = c("Urine", "Blood")) +
+  scale_shape_manual(values = c(orina = 21, sangre = 24),
+                     name = NULL, labels = c("Urine", "Blood")) +
+  labs(x = "Study year", y = "Prevalence of 3GC resistance") +
+  theme_paper(13) +
+  theme(panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.4),
+        legend.position = "bottom")
+gg_tiff(p_multi, "FigS2_metareg_specimen.tiff"); p_multi
+```
+
+## 5. Evaluación de sesgo
+
+### Matriz de riesgo de sesgo
+
+```{r}
+#| label: riesgo-sesgo
+#| fig-height: 5
+
+jbi_items <- c("1 Sampling frame", "2 Sampling method", "3 Sample size",
+               "4 Subjects/setting", "5 Coverage", "6 Condition identified",
+               "7 Standardized measurement", "8 Statistical analysis", "9 Response rate")
+riesgo_raw <- tibble::tribble(
+  ~estudio, ~anio, ~i1, ~i2, ~i3, ~i4, ~i5, ~i6, ~i7, ~i8, ~i9,
+  "Luján-Roca et al. (2003)",            2003, "Y","Y","U","U","Y","Y","Y","Y","NA",
+  "García et al. (2008-2009)",           2009, "Y","Y","Y","U","Y","Y","Y","Y","NA",
+  "García et al. (2008-2011)",           2010, "Y","Y","Y","U","Y","Y","Y","Y","NA",
+  "Flores-Paredes et al. (2009-2014)",   2012, "Y","Y","Y","U","Y","Y","N","Y","NA",
+  "Gonzales et al. (2012-2013)",         2012, "Y","Y","Y","U","Y","U","Y","Y","NA",
+  "Miranda et al. (2014-2016)",          2015, "Y","Y","Y","Y","Y","Y","Y","Y","NA",
+  "Falconí-Sarmiento et al. (2016)",    2016, "Y","Y","U","Y","Y","U","Y","Y","NA",
+  "Pérez-Lazo et al. (2015-2018)",       2017, "Y","Y","Y","N","Y","Y","Y","Y","NA",
+  "Krapp et al. (2017-2019)",            2018, "Y","Y","Y","Y","Y","Y","Y","Y","Y",
+  "Quispe et al. (2017-2018)",           2018, "Y","Y","U","Y","U","Y","Y","Y","NA",
+  "Rondon et al. (2019)",                2019, "Y","Y","U","Y","Y","Y","N","Y","NA",
+  "Chilón-Chávez et al. (2019-2020)",    2019, "Y","Y","U","Y","U","Y","Y","Y","NA")
+write.csv(riesgo_raw, file.path(out_dir, "jbi_tabla_S3_v3.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+
+riesgo_long <- riesgo_raw |>
+  pivot_longer(i1:i9, names_to = "item", values_to = "juicio") |>
+  mutate(
+    item    = factor(jbi_items[as.integer(sub("i", "", item))], levels = jbi_items),
+    juicio  = factor(juicio, levels = c("Y", "U", "N", "NA")),
+    estudio = fct_reorder(estudio, anio, .fun = min),
+    glifo   = recode(as.character(juicio), Y = "+", U = "?", N = "−", `NA` = "n/a"))
+
+p_rob <- ggplot(riesgo_long, aes(x = item, y = estudio, fill = juicio)) +
+  geom_tile(colour = "black", linewidth = 0.3) +
+  geom_text(aes(label = glifo, colour = juicio), size = 4, fontface = "bold",
+            show.legend = FALSE) +
+  scale_fill_manual(values = c(Y = "white", U = G_CLARO, N = G_OSCURO, `NA` = G_TENUE),
+                    name = "JBI judgement",
+                    labels = c("Yes", "Unclear", "No", "Not applicable")) +
+  scale_colour_manual(values = c(Y = "black", U = "black", N = "white", `NA` = "black")) +
+  theme_paper(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+        axis.text.y = element_text(face = "bold"),
+        axis.line = element_blank(), axis.ticks = element_blank(),
+        legend.position = "bottom") +
+  scale_y_discrete(labels = function(x) sub(" \\((.*)\\)$", ", \\1", x)) +
+  labs(title = "JBI critical appraisal of prevalence studies", x = NULL, y = "Included reports")
+gg_tiff(p_rob, "FigS6_risk_of_bias.tiff"); p_rob
+```
+
+### Gráfico de embudo (sesgo de publicación)
+
+```{r}
+#| label: funnel
+funnel_gris <- function(x, main = "") {
+  w <- x$w.random / max(x$w.random)
+  op <- par(mar = c(8, 4.5, 1.5, 1.5)); on.exit(par(op))
+  funnel(x, xlab = "Logit proportion", ylab = "Standard error", main = main,
+         level = 0.95, ref = x$TE.random,
+         pch = 21, col = "black", bg = G_CLARO, cex = 1 + 1.5 * w,
+         studlab = FALSE)
+  abline(v = x$TE.random, col = "black", lty = 2, lwd = 1.6)
+  legend("bottom", bty = "n", horiz = TRUE, xpd = TRUE, inset = c(0, -0.36),
+         legend = c("Studies", "Pooled effect", "Pseudo 95% CI"),
+         pch = c(21, NA, NA), pt.bg = c(G_CLARO, NA, NA),
+         col = c("black", "black", "black"), lty = c(NA, 2, 3), lwd = c(NA, 1.6, 1))
+}
+
+base_tiff("FigS8_funnel_overall.tiff", function() funnel_gris(m1))
+```
+
+### Prueba de Egger y análisis dejando uno fuera (S9)
+
+```{r}
+#| label: egger-loo
+#| fig-height: 5
+egger <- metabias(m1, method.bias = "linreg", k.min = 10)
+egger
+loo <- metainf(m1, pooled = "random")
+loo_tab <- tibble(omitido = loo$studlab, prev = plogis(loo$TE),
+                  ic_inf = plogis(loo$lower), ic_sup = plogis(loo$upper), I2 = loo$I2)[seq_len(m1$k), ]
+knitr::kable(loo_tab, digits = 3)
+base_tiff("FigS10_leaveoneout.tiff", function()
+  forest(loo, xlab = "Prevalence of 3GC resistance with one study omitted", smlab = "",
+         leftlabs = c("Study omitted"), col.square = G_CLARO, col.diamond = "black",
+         col.diamond.lines = "black", digits = 2, backtransf = TRUE,
+         rightcols = c("effect", "ci", "I2"), rightlabs = c("Proportion", "95% CI", "I2"), colgap.forest.left = "14mm"))
+```
+
+## 6a. Análisis de sensibilidad de extracción
+
+```{r}
+#| label: sensibilidad-extraccion
+prep <- function(d) d |>
+  mutate(casos = n_resistant, total = n_tested, year = meta_year,
+         studlab = paste0(meta_year, " - ", autor)) |>
+  filter(!is.na(casos), !is.na(total), total > 0)
+fit <- function(d) metaprop(event = casos, n = total, studlab = studlab, data = prep(d),
+                            sm = "PLOGIT", method = "Inverse", method.tau = "REML",
+                            incr = 0.5, method.incr = "only0", random = TRUE, common = FALSE,
+                            prediction = TRUE)
+esc <- list(
+  "Primario (un informe por estudio)"        = dat |> filter(primary_report == "SI"),
+  "(i) Ambos informes de García"             = dat,
+  "(ii) García 2016 en lugar de García 2012" = dat |> filter(!(grepl("García", autor) & meta_year == 2009)),
+  "(iii) Sin proxy BLEE (nivel 3)"           = dat |> filter(primary_report == "SI", measurement_tier < 3),
+  "(iv) Solo cefotaxima (estudios que la reportan)" = dat |> filter(primary_report == "SI", !is.na(ctx)) |>
+                                               mutate(n_resistant = round(ctx * n_tested)))
+tab_sens <- bind_rows(lapply(names(esc), function(nombre) {
+  d <- esc[[nombre]]; m <- fit(d); n_tot <- sum(prep(d)$total)
+  tibble(Escenario = nombre, k = m$k, N = n_tot,
+         Prevalencia = plogis(m$TE.random), IC_inf = plogis(m$lower.random), IC_sup = plogis(m$upper.random),
+         I2 = m$I2, PI_inf = plogis(m$lower.predict), PI_sup = plogis(m$upper.predict))
+}))
+write_xlsx(tab_sens, file.path(out_dir, "sensibilidad_extraccion_v3.xlsx"))
+write.csv(tab_sens, file.path(out_dir, "sensibilidad_extraccion_v3.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+knitr::kable(tab_sens, digits = 3)
+```
+
+## 6. Análisis de sensibilidad: solo Lima Metropolitana
+
+```{r}
+#| label: solo-lima
+dat_lima <- dat |>
+  filter(primary_report == "SI",
+         grepl("Lima", location, ignore.case = TRUE),
+         !grepl("regiones|Perú|Peru|nacional", location, ignore.case = TRUE)) |>
+  mutate(casos = n_resistant, total = n_tested, year = meta_year,
+         autor_corto = autor,
+         prev_3gc = casos / total) |>
+  filter(!is.na(prev_3gc), total > 0) |>
+  arrange(year) |>
+  mutate(studlab = paste0(year, " - ", autor_corto))
+
+m_lima <- metaprop(event = casos, n = total, studlab = studlab, data = dat_lima,
+                   sm = "PLOGIT", method = "Inverse", method.tau = "REML",
+                   incr = 0.5, method.incr = "only0", random = TRUE, common = FALSE)
+
+base_tiff("FigS7_forest_Lima.tiff", function() forest_gris(m_lima,
+  leftlabs = c("Year - Author", "Cases", "Total"),
+  xlab = "Prevalence of 3GC resistance in Metropolitan Lima", smlab = "", digits = 2, colgap.forest.left = "14mm"))
+```
+
+### Gráfico de embudo — solo Lima (S8)
+
+```{r}
+#| label: funnel-lima
+base_tiff("FigS9_funnel_Lima.tiff", function() funnel_gris(m_lima))
+```
+
+## 6b. Resumen numérico para el manuscrito
+
+```{r}
+#| label: resumen-resultados
+pl <- function(m) c(plogis(m$TE.random), plogis(m$lower.random), plogis(m$upper.random))
+fila <- function(nombre, m, extra = NA_character_) tibble(
+  analisis = nombre, k = m$k, N = sum(m$n), casos = sum(m$event),
+  prev = pl(m)[1], ic_inf = pl(m)[2], ic_sup = pl(m)[3], I2 = m$I2, tau2 = m$tau2,
+  pi_inf = plogis(m$lower.predict), pi_sup = plogis(m$upper.predict), nota = extra)
+m1p <- update(m1, prediction = TRUE)
+resumen <- bind_rows(
+  fila("3GC principal", m1p, sprintf("Q p = %.4g", m1$pval.Q)),
+  tibble(analisis = "Egger (estadístico t; p)", k = m1$k, N = NA, casos = NA,
+         prev = unname(egger$statistic), ic_inf = NA, ic_sup = NA, I2 = NA, tau2 = NA,
+         pi_inf = NA, pi_sup = NA, nota = sprintf("p = %.3f", egger$p.value)),
+  tibble(analisis = "Leave-one-out (rango de prevalencia)", k = m1$k, N = NA, casos = NA,
+         prev = NA, ic_inf = min(loo_tab$prev), ic_sup = max(loo_tab$prev),
+         I2 = min(loo_tab$I2), tau2 = max(loo_tab$I2), pi_inf = NA, pi_sup = NA,
+         nota = "ic_inf/ic_sup = prev min/max; I2/tau2 = I2 min/max"),
+  fila("Solo Lima", update(m_lima, prediction = TRUE)),
+  fila("Cefotaxima (por antibiótico)", update(meta_ctx, prediction = TRUE)),
+  fila("TMP-SMX", update(meta_tmp, prediction = TRUE)),
+  fila("Ciprofloxacino", update(meta_cip, prediction = TRUE)),
+  fila("Carbapenémicos", update(meta_carb, prediction = TRUE)),
+  tibble(analisis = "Meta-regresión año (β logit/año; p)", k = res_year$k, N = NA, casos = NA,
+         prev = coef(res_year)[["year"]], ic_inf = res_year$ci.lb[2], ic_sup = res_year$ci.ub[2],
+         I2 = res_year$I2, tau2 = res_year$tau2, pi_inf = NA, pi_sup = NA, nota = sprintf("p = %.3f; R2 = %.1f%%", res_year$pval[2], res_year$R2)),
+  tibble(analisis = "Meta-regresión BLEE (nivel 1-2; β; p)", k = meta_blee$k, N = NA, casos = NA,
+         prev = coef(meta_blee)[["esbl"]], ic_inf = meta_blee$ci.lb[2], ic_sup = meta_blee$ci.ub[2],
+         I2 = meta_blee$I2, tau2 = meta_blee$tau2, pi_inf = NA, pi_sup = NA, nota = sprintf("p = %.3f", meta_blee$pval[2])),
+  tibble(analisis = "Multivariada sangre vs orina (β logit; p)", k = rma_multi$k, N = NA, casos = NA,
+         prev = coef(rma_multi)[["grupo2sangre"]], ic_inf = rma_multi$ci.lb[3], ic_sup = rma_multi$ci.ub[3],
+         I2 = rma_multi$I2, tau2 = rma_multi$tau2, pi_inf = NA, pi_sup = NA,
+         nota = sprintf("p = %.4f; año β = %.4f (p = %.3f)", rma_multi$pval[3], coef(rma_multi)[["year_meta"]], rma_multi$pval[2])))
+write.csv(resumen, file.path(out_dir, "resumen_resultados_v3.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+
+ci_cp <- t(mapply(function(x, n) binom.test(x, n)$conf.int, dat_ma$casos, dat_ma$total))
+tabla12 <- data.frame(id = dat_ma$id, autor = dat_ma$autor, meta_year = dat_ma$year,
+  study_year_range = dat_ma$study_year_range, location = dat_ma$location, sample_type = dat_ma$sample_type,
+  agent_used = dat_ma$agent_used, tier = dat_ma$measurement_tier, cases = dat_ma$casos, total = dat_ma$total,
+  prop = round(dat_ma$casos / dat_ma$total, 3), ci_low = round(ci_cp[, 1], 2), ci_high = round(ci_cp[, 2], 2),
+  weight = round(100 * m1$w.random / sum(m1$w.random), 1))
+write.csv(tabla12, file.path(out_dir, "tabla1_2_v3.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+knitr::kable(resumen, digits = 3)
+```
+
+## 7. Diagrama de flujo PRISMA
+
+```{r}
+#| label: prisma
+#| fig-width: 9
+#| fig-height: 10.5
+
+registro <- read.csv(file.path(dirname(ruta_raw), "full_text_decisions.csv"),
+                     fileEncoding = "UTF-8-BOM", stringsAsFactors = FALSE,
+                     check.names = FALSE)
+registro <- registro[registro$En_flujo_PRISMA == "SI", ]
+capt <- grepl("^SI", registro[["Captado_PubMed_S4_2026-09-18"]]) |
+        grepl("^SI", registro[["Captado_Scopus_S4_2026-09-19"]])
+
+motivos_prisma <- c(
+  E2 = "No Peruvian data",
+  E3 = "Non-human isolates, animal or environmental",
+  E6 = "Not a primary observational study",
+  E4 = "Case or outbreak report without prevalence estimate",
+  E5 = "Resistance-selected sampling; no population denominator",
+  E1 = "Klebsiella reported at genus level only",
+  E7 = "No K. pneumoniae-specific 3GC data",
+  E8 = "Unpublished thesis")
+
+excl_ft  <- registro[registro$Decision == "EXCLUIDO", ]
+n_motivo <- sapply(names(motivos_prisma), function(k) sum(excl_ft$Codigo == k))
+stopifnot(sum(n_motivo) == nrow(excl_ft))   # todo excluido tiene un código válido
+
+hoja <- read.csv(file.path(proj, "search", "title_abstract_screening.csv"),
+                 fileEncoding = "UTF-8-BOM", stringsAsFactors = FALSE,
+                 colClasses = "character", na.strings = character(0))
+sin_consenso <- !nzchar(trimws(hoja$Consenso)) & !nzchar(hoja$Registro_ID)
+decision_ta  <- ifelse(nzchar(trimws(hoja$Consenso)), hoja$Consenso, "YA EVALUADO A TEXTO COMPLETO")
+
+no_recuperado <- registro$Decision == "NO RECUPERADO"
+pendientes    <- sum(registro$Decision == "CANDIDATO")
+
+prisma_n <- list(
+  pubmed = 51, scopus = 31, other = sum(!capt),     # identificación
+  duplicates = 16,
+  excluded = sum(grepl("^EXCLUIR", decision_ta)),   # cribado título/resumen
+  not_retrieved = sum(no_recuperado),               # textos completos no conseguidos
+  assessed = sum(!no_recuperado), excl_ft = nrow(excl_ft),
+  included_reports = sum(registro$Decision == "INCLUIDO"),
+  included = sum(registro$Decision == "INCLUIDO") -
+             sum(grepl("informe secundario", registro$En_metaanalisis)),
+  in_meta  = sum(registro$En_metaanalisis == "SI"))
+prisma_n$identified <- with(prisma_n, pubmed + scopus + other)
+prisma_n$screened   <- with(prisma_n, identified - duplicates)
+prisma_n$sought     <- with(prisma_n, screened - excluded)
+prisma_borrador <- any(sin_consenso) || pendientes > 0
+
+with(prisma_n, stopifnot(
+  sought   == nrow(registro),
+  assessed == sought - not_retrieved,
+  assessed == included_reports + excl_ft + pendientes,
+  in_meta  <= included))
+
+n_lab <- function(k) {
+  v <- if (is.character(k)) prisma_n[[k]] else k
+  sprintf("n = %s", if (is.null(v) || is.na(v)) "___" else format(v, big.mark = ","))
+}
+
+caja <- function(x0, y0, x1, y1, txt, cex = 0.80) {
+  rect(x0, y0, x1, y1, col = "white", border = "black", lwd = 1.1)
+  text((x0 + x1) / 2, (y0 + y1) / 2, txt, cex = cex, col = "black")
+}
+caja_lista <- function(x0, y0, x1, y1, txt, cex = 0.76) {
+  rect(x0, y0, x1, y1, col = "white", border = "black", lwd = 1.1)
+  text(x0 + 1.1, y1 - 1.6, txt, cex = cex, col = "black", adj = c(0, 1))
+}
+banda <- function(y0, y1, txt) {
+  rect(6.0, y0, 12.1, y1, col = "grey45", border = NA)
+  text(9.05, (y0 + y1) / 2, txt, srt = 90, cex = 0.82, font = 2, col = "white")
+}
+flecha <- function(x0, y0, x1, y1)
+  arrows(x0, y0, x1, y1, length = 0.10, lwd = 1.1, col = "black")
+linea <- function(x0, y0, x1, y1) segments(x0, y0, x1, y1, lwd = 1.1, col = "black")
+
+dibuja_prisma <- function() {
+  op <- par(mar = c(0, 0, 0, 0)); on.exit(par(op))
+  plot(NA, xlim = c(0, 100), ylim = c(0, 100), axes = FALSE, xlab = "", ylab = "",
+       xaxs = "i", yaxs = "i")
+
+  banda(80.0, 97.0, "Identification")
+  banda(30.0, 78.0, "Screening")
+  banda( 6.0, 28.0, "Included")
+
+  L0 <- 15; L1 <- 50; cx <- (L0 + L1) / 2   # columna principal
+  R0 <- 56; R1 <- 98                        # columna lateral (salidas del flujo)
+
+  caja_lista(L0, 80.5, L1, 96.5, paste0(
+    sprintf("Records identified (%s):\n\n", n_lab("identified")),
+    sprintf("   PubMed/MEDLINE (%s)\n", n_lab("pubmed")),
+    sprintf("   Scopus (%s)\n", n_lab("scopus")),
+    sprintf("   Reference lists and other sources (%s)", n_lab("other"))))
+  caja_lista(R0, 84.0, R1, 93.0, paste0(
+    "Records removed before screening:\n\n",
+    sprintf("   Duplicate records (%s)", n_lab("duplicates"))))
+
+  caja(L0, 66.5, L1, 75.0, sprintf("Records screened\n(%s)", n_lab("screened")))
+  caja(R0, 66.5, R1, 75.0, sprintf("Records excluded\n(%s)", n_lab("excluded")))
+
+  caja(L0, 53.5, L1, 62.0, sprintf("Reports sought for retrieval\n(%s)", n_lab("sought")))
+  caja(R0, 53.5, R1, 62.0, sprintf("Reports not retrieved\n(%s)", n_lab("not_retrieved")))
+
+  caja(L0, 36.5, L1, 45.0,
+       sprintf("Reports assessed for eligibility\n(%s)", n_lab("assessed")))
+  caja_lista(R0, 31.5, R1, 50.0, paste0(
+    sprintf("Reports excluded (%s):\n\n", n_lab("excl_ft")),
+    paste(sprintf("   %s (%s)", motivos_prisma, sapply(n_motivo, n_lab))[n_motivo > 0],
+          collapse = "\n")), cex = 0.70)   # los motivos con 0 informes no se listan
+
+  caja(L0, 8.0, L1, 22.0,
+       sprintf("Studies included in review\n(%s)\nReports of included studies\n(%s)\n\nStudies included in meta-analysis\n(%s)",
+               n_lab("included"), n_lab("included_reports"), n_lab("in_meta")), cex = 0.78)
+
+  flecha(cx, 80.5, cx, 75.3);  flecha(L1, 88.5,  R0 - 0.3, 88.5)
+  flecha(cx, 66.5, cx, 62.3);  flecha(L1, 70.75, R0 - 0.3, 70.75)
+  flecha(cx, 53.5, cx, 45.3);  flecha(L1, 57.75, R0 - 0.3, 57.75)
+  flecha(cx, 36.5, cx, 22.3);  flecha(L1, 40.75, R0 - 0.3, 40.75)
+
+  if (pendientes > 0) {
+    rect(R0, 12.0, R1, 20.0, col = "white", border = "grey30", lwd = 1.1, lty = 2)
+    text((R0 + R1) / 2, 16.0, cex = 0.78, col = "grey20",
+         sprintf("Eligible reports awaiting inclusion decision\n(%s)", n_lab(pendientes)))
+    segments(cx, 29.0, (R0 + R1) / 2, 29.0, lwd = 1.1, lty = 2, col = "grey30")
+    arrows((R0 + R1) / 2, 29.0, (R0 + R1) / 2, 20.3, length = 0.10, lwd = 1.1,
+           lty = 2, col = "grey30")
+  }
+
+  if (prisma_borrador)
+    text(50, 2.5, paste("DRAFT -", paste(c(
+      if (any(sin_consenso)) "title-abstract exclusions pending reviewers' consensus",
+      if (pendientes > 0) "inclusion decision pending for eligible reports"),
+      collapse = "; ")), cex = 0.62, col = "grey30")
+}
+
+base_tiff("Fig_PRISMA_flow.tiff", dibuja_prisma, w = 9, h = 10.5)
+```
+

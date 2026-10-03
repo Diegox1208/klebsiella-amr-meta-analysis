@@ -1,0 +1,8 @@
+figures/
+*.html
+*_files/
+*.xlsx
+*.docx
+.Rhistory
+.RData
+__pycache__/
