@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tablas 1 y 2 del manuscrito (v3) como .docx nuevos, generados desde
-resultados_2026/tabla1_2_v3.csv (salida del modelo final) y Datos/main_dataset_v3.csv.
-Sin dependencias: WordprocessingML escrito a mano (ver generar_tablas_S5_S6.py)."""
+"""Build Tables 1 and 2 as Word files from results/ and data/."""
 import csv, os, zipfile, re
 from xml.sax.saxutils import escape
 
@@ -12,7 +10,7 @@ def run(text, bold=False, italic=False, size=18, sup=False):
     rpr = "<w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:cs=\"Arial\"/>" + ("<w:b/>" if bold else "") + ("<w:i/>" if italic else "")
     rpr += "<w:sz w:val=\"%d\"/><w:szCs w:val=\"%d\"/>%s</w:rPr>" % (size, size, "<w:vertAlign w:val=\"superscript\"/>" if sup else "")
     return "<w:r>%s<w:t xml:space=\"preserve\">%s</w:t></w:r>" % (rpr, escape(text))
-def rich(text, size=18, bold=False):  # *cursiva*, ^superindice^
+def rich(text, size=18, bold=False):
     out = []
     for j, part in enumerate(re.split(r"\^(.+?)\^", text)):
         if j % 2 == 1: out.append(run(part, bold=bold, size=size, sup=True)); continue
@@ -42,11 +40,9 @@ def docx(path, body):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", ct); z.writestr("_rels/.rels", rels); z.writestr("word/document.xml", doc)
 
-# ------------------------------------------------------------------ datos
 res = {r["id"]: r for r in csv.DictReader(open(os.path.join(PROJ, "results/tabla1_2_v3.csv"), encoding="utf-8"))}
 base = {r["id"]: r for r in csv.DictReader(open(os.path.join(PROJ, "data/main_dataset_v3.csv"), encoding="utf-8-sig"))}
-# Metadatos de presentacion (ano de publicacion, region, muestra), en el orden de la Tabla 1 del manuscrito
-META = [  # id, pub_year, author, collection, region, sample, cephalosporin, category, derived count, primary
+META = [
  ("2",  "2012", "García et al.",        "2008–2009",           "Metropolitan Lima",       "Blood",                        "ESBL phenotype",   "ESBL-positive",   False, True),
  ("1",  "2013", "Luján-Roca et al.",    "2003",                     "Metropolitan Lima",       "Urine",                        "Cefotaxime",       "Resistant",       False, True),
  ("3",  "2016", "García et al.",        "2008–2011",           "Metropolitan Lima and Callao", "Blood, neonatal",        "ESBL phenotype",   "ESBL-positive",   False, False),
@@ -60,13 +56,9 @@ META = [  # id, pub_year, author, collection, region, sample, cephalosporin, cat
  ("9",  "2023", "Rondon et al.",             "2019",                     "National, 9 regions",     "Blood and urine",              "Class, drug not named", "Resistant",  False, True),
  ("6",  "2023", "Krapp et al.",              "2017–2019",           "National, 12 regions",    "Blood",                        "Ceftriaxone",      "Resistant",       False, True),
 ]
-# Numero de cada estudio en la lista de referencias de Manuscript_v3 (orden de primera aparicion, 3-oct-2026).
-# Si cambia la lista de referencias del manuscrito, actualizar aqui.
 REF = {"2": 14, "1": 24, "3": 15, "15": 28, "5": 25, "14": 26, "12": 27, "4": 7, "11": 9, "13": 29, "9": 10, "6": 8}
-# Rondon: la tabla de resultados usa la fila combinada (id 9 = sangre+orina en el modelo); n desde main_dataset
 rondon_n = int(base["9"]["n_tested"]) + int(base["10"]["n_tested"]); rondon_r = int(base["9"]["n_resistant"]) + int(base["10"]["n_resistant"])
 
-# Nivel de medicion (el manuscrito remite a "tiers 1 to 3 in Table 1")
 TIER = lambda agent: "3" if agent.startswith("ESBL") else ("2" if agent.startswith("Class") else "1")
 rows1 = []; tot_n = tot_r = 0
 for id_, py, au, col, reg, samp, agent, cat, deriv, prim in META:
@@ -78,7 +70,6 @@ for id_, py, au, col, reg, samp, agent, cat, deriv, prim in META:
 n_prim = sum(1 for m in META if m[9]); n_rep = len(META)
 rows1.append([f"Total, {n_prim} studies", "", "", "", f"{tot_n:,}", f"{tot_r:,}", "", "", ""])
 NUM = {9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
-# Global y sensibilidades desde los archivos de resultados del .qmd (nunca tecleados a mano)
 res_sum = {r["analisis"]: r for r in csv.DictReader(open(os.path.join(PROJ, "results/resumen_resultados_v3.csv"), encoding="utf-8"))}
 sens = {r["Escenario"]: r for r in csv.DictReader(open(os.path.join(PROJ, "results/sensibilidad_extraccion_v3.csv"), encoding="utf-8"))}
 G = res_sum["3GC principal"]; f2 = lambda v: f"{float(v):.2f}"

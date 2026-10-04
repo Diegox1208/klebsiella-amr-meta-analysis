@@ -10,7 +10,7 @@ format:
 editor: visual
 ---
 
-## 1. Preparación de datos
+## 1. Data
 
 ```{r}
 #| label: setup
@@ -22,7 +22,7 @@ editor: visual
 library(readxl); library(dplyr); library(janitor); library(meta)
 library(ggplot2); library(scales); library(metafor)
 library(tidyr); library(stringr); library(forcats); library(writexl)
-library(ragg)   # rasterizado en gris puro para los TIFF (ver helpers más abajo)
+library(ragg)
 
 proj <- normalizePath(file.path(getwd(), ".."), winslash = "/", mustWork = FALSE)
 ruta_raw <- file.path(proj, "data/main_dataset_v3.csv")
@@ -40,7 +40,7 @@ base_tiff <- function(name, draw, w = STD_W, h = STD_H) {
   ragg::agg_tiff(file.path(tif_dir, name), width = w, height = h, units = "in",
                  res = 300, compression = "lzw", background = "white")
   draw(); dev.off()
-  draw()   # inline (HTML)
+  draw()
 }
 
 G_OSCURO <- "grey20"; G_MEDIO <- "grey45"; G_CLARO <- "grey70"; G_TENUE <- "grey88"
@@ -97,7 +97,7 @@ dat0$meta_year[grepl("P.rez-Lazo", dat0$study_label_author)] <- 2017
 dat <- bind_rows(dat0[!is_r, ], comb) |> arrange(meta_year)
 
 etiqueta_autor <- function(x) {
-  x <- trimws(sub("\\s*[\u2013\u2014]\\s*.*$", "", x))  # corta en raya, nunca en guion
+  x <- trimws(sub("\\s*[\u2013\u2014]\\s*.*$", "", x))
   x <- trimws(sub("\\s*et al\\.?$", "", x))
   ifelse(x == "Castilla Torres", x, paste(x, "et al."))
 }
@@ -109,13 +109,13 @@ message("Estudios: ", nrow(dat), " | Aislamientos: ", sum(dat$n_tested),
         " | TIFF -> ", tif_dir)
 ```
 
-## 2. Meta-análisis principal (resistencia a 3GC)
+## 2. Pooled prevalence
 
 ```{r}
 #| label: meta-principal
 #| fig-height: 6
 dat_ma <- dat |>
-  filter(primary_report == "SI") |>   # un estimado por estudio (García 2016 = informe secundario)
+  filter(primary_report == "SI") |>
   mutate(casos = n_resistant, total = n_tested, year = meta_year,
          autor_corto = autor,
          prev_3gc = casos / total) |>
@@ -132,7 +132,7 @@ base_tiff("Fig_forest_3GC_main.tiff", function() forest_gris(m1,
   xlab = "Prevalence of 3GC resistance", smlab = "", digits = 2, colgap.forest.left = "14mm"))
 ```
 
-## 3. Meta-regresión bivariada (año vs. prevalencia)
+## 3. Year
 
 ```{r}
 #| label: metareg-anio
@@ -157,7 +157,7 @@ p_bubble <- ggplot(bubble_data, aes(x = year, y = prev)) +
 gg_tiff(p_bubble, "FigS1_metareg_year.tiff"); p_bubble
 ```
 
-### Diagnóstico del modelo
+### Diagnostics
 
 ```{r}
 #| label: diagnostico
@@ -172,7 +172,7 @@ base_tiff("Fig_model_diagnostics.tiff",
               par(op) }, w = 8, h = 7)
 ```
 
-### Estimaciones por antibiótico crítico a lo largo de los años de estudio (Figura 3)
+### Figure 3
 
 ```{r}
 #| label: tendencia-abx
@@ -207,7 +207,7 @@ p_trend <- ggplot(plot_dat, aes(x = meta_year, y = resistance * 100)) +
   rotulo +
   facet_wrap(~ antibiotic, nrow = 2) +
   scale_shape_manual(values = c(21, 22, 24, 23), guide = "none") +
-  scale_x_continuous(expand = expansion(mult = c(0.08, 0.25))) +   # sitio para rótulos
+  scale_x_continuous(expand = expansion(mult = c(0.08, 0.25))) +
   scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20),
                      labels = function(x) paste0(x, "%")) +
   theme_paper(12) +
@@ -218,7 +218,7 @@ p_trend <- ggplot(plot_dat, aes(x = meta_year, y = resistance * 100)) +
 gg_tiff(p_trend, "Fig_trend_antibiotics.tiff"); p_trend
 ```
 
-### Meta-análisis por antibiótico crítico
+### Other antimicrobials
 
 ```{r}
 #| label: meta-por-abx
@@ -245,7 +245,7 @@ base_tiff("Fig_forest_CIP.tiff",           function() forest_abx(meta_cip))
 base_tiff("FigS4_forest_carbapenems.tiff", function() forest_abx(meta_carb))
 ```
 
-### BLEE (+) vs. resistencia a 3GC
+### ESBL
 
 ```{r}
 #| label: blee-vs-3gc
@@ -281,7 +281,7 @@ p_blee <- ggplot() +
 gg_tiff(p_blee, "FigS3_metareg_ESBL.tiff"); p_blee
 ```
 
-## 4. Meta-regresión multivariada (año + tipo de muestra)
+## 4. Specimen
 
 ```{r}
 #| label: multivariada
@@ -290,7 +290,7 @@ kpn_multi <- dat0 |>
   filter(primary_report == "SI") |>
   mutate(
     grupo = case_when(
-      grepl("^Blood", sample_type) ~ "sangre",   # incluye "Blood (neonatal)": García 2016 (sec.) y Quispe
+      grepl("^Blood", sample_type) ~ "sangre",
       grepl("^Urine", sample_type) ~ "orina",
       TRUE ~ "otros"),
     year_meta = meta_year, n_3gc_r = n_resistant, prev_3gc = n_3gc_r / n_tested) |>
@@ -336,9 +336,9 @@ p_multi <- ggplot() +
 gg_tiff(p_multi, "FigS2_metareg_specimen.tiff"); p_multi
 ```
 
-## 5. Evaluación de sesgo
+## 5. Bias
 
-### Matriz de riesgo de sesgo
+### JBI
 
 ```{r}
 #| label: riesgo-sesgo
@@ -389,7 +389,7 @@ p_rob <- ggplot(riesgo_long, aes(x = item, y = estudio, fill = juicio)) +
 gg_tiff(p_rob, "FigS6_risk_of_bias.tiff"); p_rob
 ```
 
-### Gráfico de embudo (sesgo de publicación)
+### Funnel
 
 ```{r}
 #| label: funnel
@@ -410,7 +410,7 @@ funnel_gris <- function(x, main = "") {
 base_tiff("FigS8_funnel_overall.tiff", function() funnel_gris(m1))
 ```
 
-### Prueba de Egger y análisis dejando uno fuera (S9)
+### Egger and leave-one-out
 
 ```{r}
 #| label: egger-loo
@@ -428,7 +428,7 @@ base_tiff("FigS10_leaveoneout.tiff", function()
          rightcols = c("effect", "ci", "I2"), rightlabs = c("Proportion", "95% CI", "I2"), colgap.forest.left = "14mm"))
 ```
 
-## 6a. Análisis de sensibilidad de extracción
+## 6. Extraction sensitivity
 
 ```{r}
 #| label: sensibilidad-extraccion
@@ -458,7 +458,7 @@ write.csv(tab_sens, file.path(out_dir, "sensibilidad_extraccion_v3.csv"), row.na
 knitr::kable(tab_sens, digits = 3)
 ```
 
-## 6. Análisis de sensibilidad: solo Lima Metropolitana
+## 7. Lima
 
 ```{r}
 #| label: solo-lima
@@ -482,14 +482,14 @@ base_tiff("FigS7_forest_Lima.tiff", function() forest_gris(m_lima,
   xlab = "Prevalence of 3GC resistance in Metropolitan Lima", smlab = "", digits = 2, colgap.forest.left = "14mm"))
 ```
 
-### Gráfico de embudo — solo Lima (S8)
+### Funnel, Lima
 
 ```{r}
 #| label: funnel-lima
 base_tiff("FigS9_funnel_Lima.tiff", function() funnel_gris(m_lima))
 ```
 
-## 6b. Resumen numérico para el manuscrito
+## 8. Summary
 
 ```{r}
 #| label: resumen-resultados
@@ -535,7 +535,7 @@ write.csv(tabla12, file.path(out_dir, "tabla1_2_v3.csv"), row.names = FALSE, fil
 knitr::kable(resumen, digits = 3)
 ```
 
-## 7. Diagrama de flujo PRISMA
+## 9. PRISMA
 
 ```{r}
 #| label: prisma
@@ -561,7 +561,7 @@ motivos_prisma <- c(
 
 excl_ft  <- registro[registro$Decision == "EXCLUIDO", ]
 n_motivo <- sapply(names(motivos_prisma), function(k) sum(excl_ft$Codigo == k))
-stopifnot(sum(n_motivo) == nrow(excl_ft))   # todo excluido tiene un código válido
+stopifnot(sum(n_motivo) == nrow(excl_ft))
 
 hoja <- read.csv(file.path(proj, "search", "title_abstract_screening.csv"),
                  fileEncoding = "UTF-8-BOM", stringsAsFactors = FALSE,
@@ -573,10 +573,10 @@ no_recuperado <- registro$Decision == "NO RECUPERADO"
 pendientes    <- sum(registro$Decision == "CANDIDATO")
 
 prisma_n <- list(
-  pubmed = 51, scopus = 31, other = sum(!capt),     # identificación
+  pubmed = 51, scopus = 31, other = sum(!capt),
   duplicates = 16,
-  excluded = sum(grepl("^EXCLUIR", decision_ta)),   # cribado título/resumen
-  not_retrieved = sum(no_recuperado),               # textos completos no conseguidos
+  excluded = sum(grepl("^EXCLUIR", decision_ta)),
+  not_retrieved = sum(no_recuperado),
   assessed = sum(!no_recuperado), excl_ft = nrow(excl_ft),
   included_reports = sum(registro$Decision == "INCLUIDO"),
   included = sum(registro$Decision == "INCLUIDO") -
@@ -623,8 +623,8 @@ dibuja_prisma <- function() {
   banda(30.0, 78.0, "Screening")
   banda( 6.0, 28.0, "Included")
 
-  L0 <- 15; L1 <- 50; cx <- (L0 + L1) / 2   # columna principal
-  R0 <- 56; R1 <- 98                        # columna lateral (salidas del flujo)
+  L0 <- 15; L1 <- 50; cx <- (L0 + L1) / 2
+  R0 <- 56; R1 <- 98
 
   caja_lista(L0, 80.5, L1, 96.5, paste0(
     sprintf("Records identified (%s):\n\n", n_lab("identified")),
@@ -646,7 +646,7 @@ dibuja_prisma <- function() {
   caja_lista(R0, 31.5, R1, 50.0, paste0(
     sprintf("Reports excluded (%s):\n\n", n_lab("excl_ft")),
     paste(sprintf("   %s (%s)", motivos_prisma, sapply(n_motivo, n_lab))[n_motivo > 0],
-          collapse = "\n")), cex = 0.70)   # los motivos con 0 informes no se listan
+          collapse = "\n")), cex = 0.70)
 
   caja(L0, 8.0, L1, 22.0,
        sprintf("Studies included in review\n(%s)\nReports of included studies\n(%s)\n\nStudies included in meta-analysis\n(%s)",

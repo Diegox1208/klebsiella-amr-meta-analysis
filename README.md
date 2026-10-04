@@ -1,15 +1,15 @@
-# Third-generation cephalosporin resistance among *Klebsiella pneumoniae* in Peru
+# 3GC resistance in *Klebsiella pneumoniae*, Peru
 
-Data and code for the systematic review and meta-analysis "Third-generation cephalosporin resistance among *Klebsiella pneumoniae* in Peru: a systematic review and meta-analysis".
+Data and code for the systematic review and meta-analysis "Third-generation cephalosporin resistance among *Klebsiella pneumoniae* in Peru".
 
 - **Authors:** Diego Salas, Lourdes Judith Espinoza, Gabriel Ariel Vásquez, Leydy Carhuamaca, Antonio Marty Quispe
-- **Protocol:** PROSPERO [CRD420251268259](https://www.crd.york.ac.uk/PROSPERO/view/CRD420251268259)
-- **Archived copy:** Zenodo, https://doi.org/10.5281/zenodo.21608907
-- **Version:** 2.0, October 2026. Eleven studies, twelve reports. It replaces version 1.0, which held ten studies.
+- **Protocol:** PROSPERO CRD420251268259, https://www.crd.york.ac.uk/PROSPERO/view/CRD420251268259
+- **Archive:** Zenodo, https://doi.org/10.5281/zenodo.21608907
+- **Version:** 2.0, October 2026. Eleven studies in twelve reports. It replaces version 1.0, which held ten studies.
 
 Results are reported in the manuscript. This repository holds what is needed to check and rerun them.
 
-## Contents
+## Files
 
 | Path | What it is |
 |---|---|
@@ -25,20 +25,20 @@ Results are reported in the manuscript. This repository holds what is needed to 
 
 Abstracts are not included in the search files because they belong to the publishers. Figures are not stored here because the analysis regenerates them.
 
-## How to rerun the analysis
+## Rerun
 
 1. Install R 4.6 or later and Quarto.
-2. Install the R packages: `dplyr`, `forcats`, `ggplot2`, `ggrepel`, `janitor`, `knitr`, `meta`, `metafor`, `ragg`, `readxl`, `scales`, `stringr`, `tibble`, `tidyr`, `writexl`.
+2. Install the R packages `dplyr`, `forcats`, `ggplot2`, `ggrepel`, `janitor`, `knitr`, `meta`, `metafor`, `ragg`, `readxl`, `scales`, `stringr`, `tibble`, `tidyr` and `writexl`.
 3. From the repository root run `quarto render analysis/analysis.qmd`.
 4. Optionally run `python analysis/make_tables_1_2.py`. It needs Python 3 and no extra packages.
 
 The analysis was run with R 4.6.1, `meta` 8.5-0 and `metafor` 5.0-1. Pooled proportions use a random-effects model on logit-transformed proportions with REML.
 
-## Reading the data
+## Columns
 
 Column names and notes are in Spanish, the working language of the team. The main ones are listed here.
 
-**`main_dataset_v3.csv`**
+### Dataset
 
 | Column | Meaning |
 |---|---|
@@ -50,15 +50,17 @@ Column names and notes are in Spanish, the working language of the team. The mai
 | `primary_report` | `SI` when the row enters the primary analysis |
 | `ctx`, `cro`, `caz`, `cip`, `tmp_smx`, `carbapenem_resistance`, `esbl` and similar | Proportion resistant to each antimicrobial, where reported |
 
-**`full_text_decisions.csv`**
+### Decisions
 
 | Column | Meaning |
 |---|---|
 | `Decision` | `INCLUIDO` included, `EXCLUIDO` excluded, `NO RECUPERADO` full text not retrieved |
-| `Codigo` | Reason for exclusion, see below |
+| `Codigo` | Reason for exclusion, see the codes below |
 | `Motivo_principal_EN` | Reason for exclusion in English, as printed in Supplementary Table S5 |
 | `En_flujo_PRISMA` | `SI` when the report is counted in the PRISMA flow diagram |
 | `Captado_PubMed_…`, `Captado_Scopus_…` | Whether the database search retrieved the report |
+
+### Codes
 
 | Code | Reason for exclusion |
 |---|---|
@@ -71,11 +73,13 @@ Column names and notes are in Spanish, the working language of the team. The mai
 | E7 | No *K. pneumoniae*-specific third-generation cephalosporin data |
 | E8 | Unpublished thesis |
 
-**`title_abstract_screening.csv`**: `Revisora_1` and `Revisora_2` are the two reviewers' decisions and `Consenso` is the agreed decision. `EXCLUIR` means exclude and `INCLUIR` means assess in full text. Rows with a `Registro_ID` and no consensus had already been assessed in full text.
+### Screening
 
-## License and citation
+`Revisora_1` and `Revisora_2` are the two reviewers' decisions and `Consenso` is the agreed decision. `EXCLUIR` means exclude and `INCLUIR` means assess in full text. Rows with a `Registro_ID` and no consensus had already been assessed in full text.
 
-Data and code are released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). To cite them, use the Zenodo record above. All data were extracted from published studies and are provided in aggregated, study-level form.
+## License
+
+Data and code are released under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. To cite them, use the Zenodo record above. All data were extracted from published studies and are provided in aggregated, study-level form.
 
 ## Contact
 
