@@ -4,8 +4,8 @@ Data and code for the systematic review and meta-analysis "Third-generation ceph
 
 - **Authors:** Diego Salas, Lourdes Judith Espinoza, Gabriel Ariel Vásquez, Leydy Carhuamaca, Antonio Marty Quispe
 - **Protocol:** PROSPERO CRD420251268259, https://www.crd.york.ac.uk/PROSPERO/view/CRD420251268259
-- **Archive:** Zenodo, https://doi.org/10.5281/zenodo.21608907
-- **Version:** 2.0, October 2026. Eleven studies in twelve reports. It replaces version 1.0, which held ten studies.
+- **Archive:** Zenodo, https://doi.org/10.5281/zenodo.22682353
+- **Version:** 2.0, October 2026. Eleven studies in twelve reports. It replaces an earlier record, https://doi.org/10.5281/zenodo.21608907, which held ten studies.
 
 Results are reported in the manuscript. This repository holds what is needed to check and rerun them.
 
