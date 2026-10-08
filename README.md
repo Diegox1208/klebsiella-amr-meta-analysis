@@ -5,7 +5,7 @@ Data and code for the systematic review and meta-analysis "Third-generation ceph
 - **Authors:** Diego Salas, Lourdes Judith Espinoza, Gabriel Ariel Vásquez, Leydy Carhuamaca, Antonio Marty Quispe
 - **Protocol:** PROSPERO CRD420251268259, https://www.crd.york.ac.uk/PROSPERO/view/CRD420251268259
 - **Archive:** Zenodo, https://doi.org/10.5281/zenodo.22682353
-- **Version:** 2.0, October 2026. Eleven studies in twelve reports. It replaces an earlier record, https://doi.org/10.5281/zenodo.21608907, which held ten studies.
+- **Version:** 2.1, October 2026. Fifteen studies in sixteen reports, after searches of SciELO, LILACS and Scopus with aligned terms added in October 2026. Version 2.0 held eleven studies, and the earlier record https://doi.org/10.5281/zenodo.21608907 held ten.
 
 Results are reported in the manuscript. This repository holds what is needed to check and rerun them.
 
@@ -18,7 +18,10 @@ Results are reported in the manuscript. This repository holds what is needed to 
 | `data/extraction_audit.csv` | Extraction of the primary outcome verified against each article. Source of Supplementary Table S6 |
 | `search/pubmed_2026-09-18.csv` | Records retrieved from PubMed on 18 September 2026 |
 | `search/scopus_2026-09-19.csv` | Records retrieved from Scopus on 19 September 2026, bibliographic fields only |
-| `search/title_abstract_screening.csv` | Title and abstract screening by two reviewers, with the consensus decision |
+| `search/title_abstract_screening.csv` | Title and abstract screening of the September 2026 records by two reviewers, with the consensus decision |
+| `search/scielo_2026-10-06.csv`, `search/lilacs_2026-10-07.csv`, `search/scopus_aligned_2026-10-07.csv` | Records retrieved in October 2026 from SciELO, LILACS and Scopus with terms aligned with PubMed |
+| `search/screening_scielo_2026-10-06.csv`, `search/screening_lilacs_2026-10-07.csv`, `search/screening_scopus_aligned_2026-10-07.csv` | Title and abstract screening of the new records from each October search |
+| `search/full_text_assessment_2026-10.csv` | Full-text assessment of the reports retrieved by the October searches |
 | `analysis/analysis.qmd` | The complete analysis in R and Quarto. It writes `results/` and `figures/` |
 | `analysis/make_tables_1_2.py` | Builds Tables 1 and 2 as Word files from `results/` |
 | `results/` | Tables written by the analysis: pooled estimates, sensitivity analyses, study-level results and JBI ratings |

@@ -1,12 +1,16 @@
 "id","autor","meta_year","study_year_range","location","sample_type","agent_used","tier","cases","total","prop","ci_low","ci_high","weight"
-1,"Luján-Roca et al.",2003,"2003","Lima","Urine","cefotaxime (R only)",1,14,35,0.4,0.24,0.58,8.2
-2,"García et al.",2009,"2008–2009","Lima","Blood","ESBL phenotype (proxy, tier 3)",3,241,321,0.751,0.7,0.8,10.3
-4,"Flores-Paredes et al.",2012,"2009–2014","Lima","Clinical samples (unspecified)","ceftriaxone (highest agent, GBD rule; R+I)",1,1050,1313,0.8,0.78,0.82,10.6
-14,"Gonzales et al.",2012,"2012–2013","Lima","Multiple (urine, blood, respiratory, other)","ESBL phenotype (proxy, tier 3)",3,74,181,0.409,0.34,0.48,10.2
-5,"Miranda et al.",2015,"2014–2016","Lima","Urine","ceftriaxone = cefotaxime = ceftazidime (49.1% S; R+I)",1,55,108,0.509,0.41,0.61,9.8
-15,"Falconí-Sarmiento et al.",2016,"2016","Lima","Blood","ESBL phenotype (proxy, tier 3)",3,14,25,0.56,0.35,0.76,7.5
-11,"Pérez-Lazo et al.",2017,"2015–2018","Lima","Not stated","ceftazidime (only 3GC reported; R/NS ambiguous)",1,772,1154,0.669,0.64,0.7,10.7
-6,"Krapp et al.",2018,"2017–2019","Perú","Blood","ceftriaxone (= ceftriaxone or ceftazidime composite; R only)",1,81,118,0.686,0.59,0.77,9.8
-12,"Quispe et al.",2018,"2017–2018","Lima","Blood (neonatal)","cefotaxime (R+I)",1,21,29,0.724,0.53,0.87,7.4
-13,"Chilón-Chávez et al.",2019,"2019–2020","Lambayeque","Multiple (respiratory + urine + blood)","ceftriaxone (complement of S; R+I)",1,21,25,0.84,0.64,0.95,6
-9,"Rondon et al.",2019,"2019","Perú (9 regiones: Lima x2, La Libertad, Lambayeque, Junín, Loreto, Cusco, Ica, Ucayali, Tumbes)","Multiple (Blood + Urine)","3GC class as reported (agent not specified)",2,39,74,0.527,0.41,0.64,9.4
+16,"Morales et al.",2000,"2000","Lima","Clinical samples (unspecified)","Cefotaxime (non-susceptible, R+I)",1,11,18,0.611,0.36,0.83,5.1
+1,"Luján-Roca et al.",2003,"2003","Lima","Urine","cefotaxime (R only)",1,14,35,0.4,0.24,0.58,6.3
+19,"Méndez Chacón et al.",2007,"2002–2011","Lima","Urine","ESBL phenotype (proxy, tier 3)",3,15,23,0.652,0.43,0.84,5.5
+2,"García et al.",2009,"2008–2009","Lima","Blood","ESBL phenotype (proxy, tier 3)",3,241,321,0.751,0.7,0.8,8.2
+4,"Flores-Paredes et al.",2012,"2009–2014","Lima","Clinical samples (unspecified)","ceftriaxone (highest agent, GBD rule; R+I)",1,1050,1313,0.8,0.78,0.82,8.4
+14,"Gonzales et al.",2012,"2012–2013","Lima","Multiple (urine, blood, respiratory, other)","ESBL phenotype (proxy, tier 3)",3,74,181,0.409,0.34,0.48,8
+18,"Fernández-Mogollón et al.",2014,"2014","Chiclayo","Multiple (urine, blood, respiratory, wound)","Ceftriaxone (non-susceptible, complement of susceptible)",1,83,102,0.814,0.72,0.88,7.2
+5,"Miranda et al.",2015,"2014–2016","Lima","Urine","ceftriaxone = cefotaxime = ceftazidime (49.1% S; R+I)",1,55,108,0.509,0.41,0.61,7.7
+15,"Falconí-Sarmiento et al.",2016,"2016","Lima","Blood","ESBL phenotype (proxy, tier 3)",3,14,25,0.56,0.35,0.76,5.8
+11,"Pérez-Lazo et al.",2017,"2015–2018","Lima","Not stated","ceftazidime (only 3GC reported; R/NS ambiguous)",1,772,1154,0.669,0.64,0.7,8.5
+6,"Krapp et al.",2018,"2017–2019","Perú","Blood","ceftriaxone (= ceftriaxone or ceftazidime composite; R only)",1,81,118,0.686,0.59,0.77,7.7
+12,"Quispe et al.",2018,"2017–2018","Lima","Blood (neonatal)","cefotaxime (R+I)",1,21,29,0.724,0.53,0.87,5.7
+13,"Chilón-Chávez et al.",2019,"2019–2020","Lambayeque","Multiple (respiratory + urine + blood)","ceftriaxone (complement of S; R+I)",1,21,25,0.84,0.64,0.95,4.6
+9,"Rondon et al.",2019,"2019","Perú (9 regiones: Lima x2, La Libertad, Lambayeque, Junín, Loreto, Cusco, Ica, Ucayali, Tumbes)","Multiple (Blood + Urine)","3GC class as reported (agent not specified)",2,39,74,0.527,0.41,0.64,7.4
+17,"Sosa-Flores et al.",2021,"2020–2021","Chiclayo","Blood (neonatal)","Cefotaxime (resistant, as reported)",1,6,11,0.545,0.23,0.83,4.1

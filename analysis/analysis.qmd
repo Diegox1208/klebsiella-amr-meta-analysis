@@ -360,7 +360,11 @@ riesgo_raw <- tibble::tribble(
   "Krapp et al. (2017-2019)",            2018, "Y","Y","Y","Y","Y","Y","Y","Y","Y",
   "Quispe et al. (2017-2018)",           2018, "Y","Y","U","Y","U","Y","Y","Y","NA",
   "Rondon et al. (2019)",                2019, "Y","Y","U","Y","Y","Y","N","Y","NA",
-  "Chilón-Chávez et al. (2019-2020)",    2019, "Y","Y","U","Y","U","Y","Y","Y","NA")
+  "Chilón-Chávez et al. (2019-2020)",    2019, "Y","Y","U","Y","U","Y","Y","Y","NA",
+  "Morales et al. (2000)",               2000, "Y","Y","U","U","Y","Y","Y","Y","NA",
+  "Méndez Chacón et al. (2002-2011)",    2007, "Y","Y","U","Y","Y","U","U","Y","NA",
+  "Fernández-Mogollón et al. (2014)",    2014, "Y","Y","Y","U","U","Y","U","U","NA",
+  "Sosa-Flores et al. (2020-2021)",      2021, "Y","Y","U","Y","Y","Y","Y","Y","NA")
 write.csv(riesgo_raw, file.path(out_dir, "jbi_tabla_S3_v3.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 
 riesgo_long <- riesgo_raw |>
@@ -546,8 +550,7 @@ registro <- read.csv(file.path(dirname(ruta_raw), "full_text_decisions.csv"),
                      fileEncoding = "UTF-8-BOM", stringsAsFactors = FALSE,
                      check.names = FALSE)
 registro <- registro[registro$En_flujo_PRISMA == "SI", ]
-capt <- grepl("^SI", registro[["Captado_PubMed_S4_2026-09-18"]]) |
-        grepl("^SI", registro[["Captado_Scopus_S4_2026-09-19"]])
+otras <- grepl("^Otras", registro[["Fuente_identificacion"]])
 
 motivos_prisma <- c(
   E2 = "No Peruvian data",
@@ -557,24 +560,30 @@ motivos_prisma <- c(
   E5 = "Resistance-selected sampling; no population denominator",
   E1 = "Klebsiella reported at genus level only",
   E7 = "No K. pneumoniae-specific 3GC data",
-  E8 = "Unpublished thesis")
+  E8 = "Unpublished thesis",
+  FECHA = "Published outside the eligibility window")
 
 excl_ft  <- registro[registro$Decision == "EXCLUIDO", ]
 n_motivo <- sapply(names(motivos_prisma), function(k) sum(excl_ft$Codigo == k))
 stopifnot(sum(n_motivo) == nrow(excl_ft))
 
-hoja <- read.csv(file.path(proj, "search", "title_abstract_screening.csv"),
+lee_hoja <- function(nombre) read.csv(file.path(proj, "search", nombre),
                  fileEncoding = "UTF-8-BOM", stringsAsFactors = FALSE,
                  colClasses = "character", na.strings = character(0))
+hoja        <- lee_hoja("title_abstract_screening.csv")
+hoja_scielo <- lee_hoja("screening_scielo_2026-10-06.csv")
+hoja_lilacs <- lee_hoja("screening_lilacs_2026-10-07.csv")
+hoja_scopus <- lee_hoja("screening_scopus_aligned_2026-10-07.csv")
 sin_consenso <- !nzchar(trimws(hoja$Consenso)) & !nzchar(hoja$Registro_ID)
-decision_ta  <- ifelse(nzchar(trimws(hoja$Consenso)), hoja$Consenso, "YA EVALUADO A TEXTO COMPLETO")
+decision_ta  <- c(ifelse(nzchar(trimws(hoja$Consenso)), hoja$Consenso, "YA EVALUADO A TEXTO COMPLETO"),
+                  hoja_scielo$Consenso, hoja_lilacs$Consenso, hoja_scopus$Consenso)
 
 no_recuperado <- registro$Decision == "NO RECUPERADO"
 pendientes    <- sum(registro$Decision == "CANDIDATO")
 
 prisma_n <- list(
-  pubmed = 51, scopus = 31, other = sum(!capt),
-  duplicates = 16,
+  pubmed = 51, scopus = 84, scielo = 51, lilacs = 88, other = sum(otras),
+  duplicates = 16 + 41 + 17 + 69,
   excluded = sum(grepl("^EXCLUIR", decision_ta)),
   not_retrieved = sum(no_recuperado),
   assessed = sum(!no_recuperado), excl_ft = nrow(excl_ft),
@@ -582,7 +591,7 @@ prisma_n <- list(
   included = sum(registro$Decision == "INCLUIDO") -
              sum(grepl("informe secundario", registro$En_metaanalisis)),
   in_meta  = sum(registro$En_metaanalisis == "SI"))
-prisma_n$identified <- with(prisma_n, pubmed + scopus + other)
+prisma_n$identified <- with(prisma_n, pubmed + scopus + scielo + lilacs + other)
 prisma_n$screened   <- with(prisma_n, identified - duplicates)
 prisma_n$sought     <- with(prisma_n, screened - excluded)
 prisma_borrador <- any(sin_consenso) || pendientes > 0
@@ -630,7 +639,9 @@ dibuja_prisma <- function() {
     sprintf("Records identified (%s):\n\n", n_lab("identified")),
     sprintf("   PubMed/MEDLINE (%s)\n", n_lab("pubmed")),
     sprintf("   Scopus (%s)\n", n_lab("scopus")),
-    sprintf("   Reference lists and other sources (%s)", n_lab("other"))))
+    sprintf("   SciELO (%s)\n", n_lab("scielo")),
+    sprintf("   LILACS (%s)\n", n_lab("lilacs")),
+    sprintf("   Reference lists and other sources (%s)", n_lab("other"))), cex = 0.70)
   caja_lista(R0, 84.0, R1, 93.0, paste0(
     "Records removed before screening:\n\n",
     sprintf("   Duplicate records (%s)", n_lab("duplicates"))))
